@@ -36,7 +36,6 @@
 #include "ui_ErrorDisplay.h"
 #include "keyboard.h"
 
-#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -146,22 +145,6 @@ alignas(16) unsigned char gPendingGlobalPalette[0x1000] = {};
 // Lead 2026-10-20 (v51115): InterfaceBar::DrawFunction is translated in src/ui_TextObjects_InterfacePasswordTextObject_InterfacePasswordTex.cpp.
 // Lead 2026-10-20 (v51111): InterfaceTextBox::DrawFunction and the knob's, light panel's and vary box's destructors are
 // translated in src/InterfaceKnob_InterfaceKnob_GetValue.cpp.
-
-// The game's trace calls. TRACE (0x1006fcfc) is an empty function in the 2.04b3 build and is
-// translated (src/Debug.cpp); CTRACE (0x1006fcbc) is not translated yet, and while the launcher
-// is being brought up its text is shown, since it says why a start-up step gave up. When it is
-// translated this goes, and the text with it.
-static void ShowTrace(const char* prefix, const char* format, va_list arguments) {
-    char text[1024];
-    std::vsnprintf(text, sizeof text, format, arguments);
-    std::fprintf(stderr, "%s%s%s", prefix, text, text[0] != '\0' && text[std::strlen(text) - 1] == '\n' ? "" : "\n");
-}
-void CTRACE(uint32_t, const char* format, ...) {
-    va_list arguments;
-    va_start(arguments, format);
-    ShowTrace("CTRACE: ", format, arguments);
-    va_end(arguments);
-}
 
 // interim: the engine imports Random from the C library (0x1004c5e8 is its glue stub);
 // the Mac's generator is not in the dump; 15-bit values like rand().
