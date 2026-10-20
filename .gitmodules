@@ -1,0 +1,3 @@
+[submodule "tpw-decomp"]
+	path = tpw-decomp
+	url = ../tpw-decomp

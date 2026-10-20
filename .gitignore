@@ -1,0 +1,25 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+*.o
+*.a
+*.dylib
+*.so
+
+# Never commit the game's files: program, data, films, saves.
+extracted/
+user-*/
+*.wad
+*.sdt
+*.sam
+*.mov
+*.bin
+*.rsrc
+
+# Python and editors
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.vscode/
