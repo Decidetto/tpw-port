@@ -13,7 +13,9 @@
 #include <algorithm>
 #include <vector>
 
+#include <dlfcn.h>
 #include <execinfo.h>
+#include <sys/ucontext.h>
 #include <unistd.h>
 
 #include "TPMain.h"
@@ -82,6 +84,25 @@ void OnCrash(int signal) {
     std::raise(signal);
 }
 
+// The faulting instruction and address first: the backtrace's frame after _sigtramp is the caller when the fault is in a
+// function without a frame record (a leaf), so it can name the wrong place.
+void OnCrashInfo(int signal, siginfo_t* info, void* context) {
+    uintptr_t pc = 0;
+#if defined(__arm64__) || defined(__aarch64__)
+    pc = static_cast<uintptr_t>(static_cast<ucontext_t*>(context)->uc_mcontext->__ss.__pc);
+#elif defined(__x86_64__)
+    pc = static_cast<uintptr_t>(static_cast<ucontext_t*>(context)->uc_mcontext->__ss.__rip);
+#endif
+    Dl_info where{};
+    const bool named = dladdr(reinterpret_cast<void*>(pc), &where) != 0 && where.dli_sname != nullptr;
+    static char text[512];
+    const int length = std::snprintf(text, sizeof text, "launcher: fault at address %p, instruction %p (%s + %ld)\n", info->si_addr,
+                                     reinterpret_cast<void*>(pc), named ? where.dli_sname : "?",
+                                     named ? static_cast<long>(pc - reinterpret_cast<uintptr_t>(where.dli_saddr)) : 0L);
+    if (length > 0) (void)!write(2, text, static_cast<size_t>(length));
+    OnCrash(signal);
+}
+
 void Usage(const char* program) {
     std::fprintf(stderr,
                  "usage: %s [options]\n"
@@ -138,8 +159,14 @@ void tpw_stub_called(const char* name, bool platform, bool first) {
 }
 
 int main(int argc, char** argv) {
-    std::signal(SIGSEGV, OnCrash);
-    std::signal(SIGBUS, OnCrash);
+    // a trap (a hardened library check) and an illegal instruction get the backtrace too
+    for (int crash : {SIGSEGV, SIGBUS, SIGTRAP, SIGILL}) {
+        struct sigaction action{};
+        action.sa_sigaction = OnCrashInfo;
+        action.sa_flags = SA_SIGINFO;
+        sigemptyset(&action.sa_mask);
+        sigaction(crash, &action, nullptr);
+    }
     tpw::Config& config = tpw::config();
     int32_t resolution = kDefaultResolution;
     if (const char* dir = std::getenv("TPW_GAME_DIR")) config.gameDir = dir;
