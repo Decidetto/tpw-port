@@ -203,7 +203,7 @@ BitmapHandle* NewBitmap(int32_t width, int32_t height, int32_t bitCount, bool to
     return Add(bitmap);
 }
 
-// The LOGFONTA of TrueTypeRender's constructor (src/TrueTypeRender.cpp), the DC's default font.
+// The LOGFONTA of TrueTypeRender's constructor (src/game/rides/RideSign.cpp), the DC's default font.
 tagLOGFONTA DefaultLogFont() {
     tagLOGFONTA font;
     std::memset(&font, 0, sizeof font);

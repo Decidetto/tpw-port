@@ -89,19 +89,19 @@ alignas(16) unsigned char gPendingGlobalPalette[0x1000] = {};
     void Class::Render() { TPW_PENDING(#Class "::Render()"); }                                     \
     void Class::Close() { TPW_PENDING(#Class "::Close()"); }                                       \
     void Class::WindowMessagesFn(int32_t, int32_t, int32_t) { TPW_PENDING(#Class "::WindowMessagesFn(long, long, long)"); }
-// FS_OnlineList.cpp (unit w68): the online system is built for real now (src/FS_Online_init.cpp); the list family's and the park's
+// FS_OnlineList.cpp (unit w68): the online system is built for real now (src/game/online/FS_Online.cpp); the list family's and the park's
 // virtual destructors are the classes' key functions, untranslated (0x1016fd48, 0x10170834, 0x101709b0, 0x10170b34, 0x10170ca8,
 // 0x10170e20, 0x10179d28, 0x1017a908, 0x1017b4a4, 0x1017c464), so their vtables need a definition here; nothing destroys the lists in
 // the launcher before the game closes (gOnlineSystem is deleted at shutdown, and CFSOnlineSystem::~CFSOnlineSystem is itself pending).
 // 2026-10-20 (lead, v5L01): CFSOnlineSystemParkList's (0x1016fd48) and CFSOnlinePark's destructors are translated now (src/
-// FS_Online_gametype_CFSOnlineSystemParkList_Dtor_CFSOnlineSystemPark.cpp, src/CFSOnlinePark_CFSOnlinePark.cpp); their stand-ins went.
+// FS_Online_gametype_CFSOnlineSystemParkList_Dtor_CFSOnlineSystemPark.cpp, src/game/online/FS_OnlineList.cpp); their stand-ins went.
 // Lead 2026-10-20 (v51065): CFSOnlineSystemCityList's destructor is translated in src/FS_Online_CFSOnlineSystemParkList_InWorldByPlayerName_
 // Dtor_CFSOnlineSystemParkList_InCity_GetList_CFSOnlineSystemCityList_StoreReceivedList_CFSOnlineSystemCityList_ReturnCityInfo.cpp.
 // Worker v5L17: CFSOnlineSystemParkList_InWorldByParkID's and CFSOnlineSystemParkList_InCityTop10's destructors and the city instance
-// of the base's are translated in src/FS_OnlineList_dtors.cpp; their stand-ins went.
-// Lead 2026-10-20 (v51129): CFSOnlineSystemThemeList's destructor is translated in src/ui_Postcard_panel_std_basic_string_assign_2.cpp.
+// of the base's are translated in src/game/online/FS_Online.cpp; their stand-ins went.
+// Lead 2026-10-20 (v51129): CFSOnlineSystemThemeList's destructor is translated in src/game/online/FS_OnlineList.cpp, src/game/MslSupport.cpp, src/game/ui/InterfaceDrawEngine.cpp.
 // Lead 2026-10-20 (v51110): CFSOnlineSystemServerList's and CFSOnlineSystemRideList's destructors are translated in
-// src/CFSOnlineSystemServerList_RequestListFromServer_CFSOnlineSystemServerList_ReturnFTPDownloadServe.cpp.
+// src/game/online/FS_OnlineList.cpp, src/game/online/FS_Online.cpp, src/game/ui/ui_main.cpp.
 
 // The screens. A screen's Show and Hide stand-ins keep the base class's "visible" word, so
 // that the screen system ticks the screens the lobby opened.
@@ -123,28 +123,28 @@ alignas(16) unsigned char gPendingGlobalPalette[0x1000] = {};
         mVisible = 0;                                                                                                       \
     }
 // The island screens: the base class, the theme islands and the islands themselves are translated
-// (src/lobby_islands.cpp, src/lobby_islands_tick.cpp, src/lobby_islands_rest.cpp); the online islands
-// are not. (The online globe's constructor and the download and publish globes' Init are translated: src/lobby_globe.cpp, unit w62.)
+// (src/game/online/lobby_island.cpp, src/game/online/LBFlyingMesh.cpp, src/game/online/lobby_parser.cpp); the online islands
+// are not. (The online globe's constructor and the download and publish globes' Init are translated: src/game/online/lobby_globe.cpp, unit w62.)
 // 2026-10-20 (lead, v5L01): the online islands' Tick, Show and ProcessCancel and the download globe's destructor and Hide are
 // translated (src/CLBScreenComponentOnlineIslands_GotoNextIsland*.cpp, src/lobby_globe_CLBScreenComponentDownloadGlobe_Dtor_*.cpp);
 // the stand-ins of those five went, and the rest of each screen's stand-ins stay.
 // Lead 2026-10-20 (v51106): the online islands' destructor, WindowMessagesFn and Hide and the download globe's Tick are translated in
-// src/CLBScreenComponentOnlineIslands_GotoNextIsland_CLBScreenComponentOnlineIslands_StartCurrentIsla.cpp.
-// Lead 2026-10-20 (v51031): its WindowMessagesFn is translated in src/MapCell_kinds_LLCC_DrawLine_2.cpp.
+// src/game/online/lobby_globe.cpp, src/game/online/lobby_island.cpp.
+// Lead 2026-10-20 (v51031): its WindowMessagesFn is translated in src/game/online/lobby_globe.cpp.
 // Lead 2026-10-20 (v51046): its Show and ProcessCancel are translated in
-// src/CLBScreenComponentOnlineIslands_GotoNextIsland_OnlineIslandParkDownloadCompleteCallback_2.cpp.
+// src/game/HLSprite.cpp, src/game/online/lobby_parser.cpp, src/game/online/lobby_island.cpp, src/game/online/lobby_globe.cpp, src/game/ui/intrface.cpp.
 // Lead 2026-10-20 (v51106): its destructor and Tick are translated in the same file.
-// Lead 2026-10-20 (v5957): its WindowMessagesFn, Show and Hide are translated in src/lobby_globe_CLBScreenComponentPublishGlobe_WindowMessagesFn.cpp
+// Lead 2026-10-20 (v5957): its WindowMessagesFn, Show and Hide are translated in src/game/online/lobby_globe.cpp
 
-// The interface's controls (src/ui_controls_create.cpp, unit w31b): each constructor stores its class's vtable, which is emitted
+// The interface's controls (src/game/ui/InterfaceBar.cpp, src/game/ui/InterfaceButton.cpp, src/game/ui/InterfaceEditBox.cpp, src/game/ui/InterfaceImage.cpp, src/game/ui/InterfaceKnob.cpp, src/game/ui/InterfaceLightPanel.cpp, src/game/ui/InterfaceListBox.cpp, src/game/ui/InterfaceListControl2.cpp, src/game/ui/InterfaceTextBox.cpp, src/game/ui/InterfaceVaryBox.cpp, src/game/ui/InterfaceWindow.cpp, unit w31b): each constructor stores its class's vtable, which is emitted
 // where the class's first virtual member is defined, so these are the key functions (the first override in the Mac's vtable
 // order: DrawFunction for the bar, edit box, list box and text box, the destructor for the check buttons, image, knob, light panel
 // and vary box, CalcClientArea for the list control). The four DrawFunctions are empty functions in the original (4 bytes);
-// the rest of each vtable is generated stand-ins. The button's key function, its destructor, is translated (src/InterfaceButton.cpp),
-// and so are the image's (src/ui_image_dtor.cpp, unit w75) and the check buttons' (src/InterfaceCheckButtons_dtor.cpp, unit w91).
-// Lead 2026-10-20 (v51115): InterfaceBar::DrawFunction is translated in src/ui_TextObjects_InterfacePasswordTextObject_InterfacePasswordTex.cpp.
+// the rest of each vtable is generated stand-ins. The button's key function, its destructor, is translated (src/game/ui/InterfaceButton.cpp),
+// and so are the image's (src/game/ui/InterfaceImage.cpp, unit w75) and the check buttons' (src/game/ui/InterfaceButton.cpp, unit w91).
+// Lead 2026-10-20 (v51115): InterfaceBar::DrawFunction is translated in src/game/ui/InterfaceDrawEngine.cpp.
 // Lead 2026-10-20 (v51111): InterfaceTextBox::DrawFunction and the knob's, light panel's and vary box's destructors are
-// translated in src/InterfaceKnob_InterfaceKnob_GetValue.cpp.
+// translated in src/game/ui/InterfaceVaryBox.cpp, src/game/ui/ui_upgradeStatus.cpp, src/game/ui/InterfaceKnob.cpp, src/game/ui/InterfaceLightPanel.cpp, src/game/ui/InterfaceWindow.cpp, src/game/ui/InterfaceBar.cpp, src/game/ui/InterfaceImage.cpp, src/game/ui/InterfaceTextBox.cpp, src/game/ui/UI_Base.cpp, src/game/ui/ui_progressBar.cpp, src/game/ui/ui_yearEndPanel.cpp.
 
 // interim: the engine imports Random from the C library (0x1004c5e8 is its glue stub);
 // the Mac's generator is not in the dump; 15-bit values like rand().
@@ -155,7 +155,7 @@ int32_t Random() {
 }
 
 // Lead 2026-10-20 (v51112): bfl::maths::Random and RangedRandomSlow are translated in
-// src/AudioPlaceHolder_LbMaths_Random_LbMaths_RangedRandomSlow.cpp.
+// src/sound/PlaceHolderSentence.cpp, src/sound/AudioPlaceHolder.cpp, src/sound/TbSoundCodecLoop.cpp, src/sound/TbSoundSampleCallback.cpp, src/sound/TbSoundSampleMPEG2.cpp, src/sound/TbSoundSampleWAV.cpp, src/sound/TbSoundSamplePipe.cpp.
 
 // IME::MslWideString (include/ui_ime.h; unit w92): the string library's constructor and destructor.
 // interim: the MSL std::basic_string<wchar_t> instantiations 0x101e0b84 (allocates a 16-byte representation: capacity 3, refcount 1,
@@ -171,7 +171,7 @@ IME::MslWideString::~MslWideString() {}
 // pointer to the characters), which is what UpdateDisplay reads the text through; the characters are a copy of their own. Nothing is
 // shared or freed (the library's destructor, 0x101468f8, is not called by the list control's translated code). Delete these two when a
 // string unit lands (the duplicate-symbol link error says which).
-// Lead 2026-10-20 (v51129): assign is translated in src/ui_Postcard_panel_std_basic_string_assign_2.cpp (through the translated
+// Lead 2026-10-20 (v51129): assign is translated in src/game/MslSupport.cpp (through the translated
 // change_size, which keeps a representation of one user in place, as this constructor makes it); the constructor stays.
 LCString::LCString(const char16_t* text) {
     size_t length = 0;
@@ -182,4 +182,4 @@ LCString::LCString(const char16_t* text) {
 
 // 2026-10-14: w122a and w122b replaced the ten singleton thing constructor interims.
 
-// 2026-10-20 (lead, v5L01): the INTERIM w125 TbIntegerVTag::Format went; src/TbUniStringVTag_TbIntegerVTag_Format.cpp translates it.
+// 2026-10-20 (lead, v5L01): the INTERIM w125 TbIntegerVTag::Format went; src/ltms/TbVTag.cpp translates it.

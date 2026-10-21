@@ -24,7 +24,7 @@ inline float TbFontScaleFor(uint32_t line) {
 inline uint32_t TbFontScaled(uint32_t value, float scale) {
     return scale == 1.0f ? value : static_cast<uint32_t>(static_cast<float>(value) * scale + 0.5f);
 }
-// DrawChar's (src/ltms_fontrender_method.cpp): the glyph `pixels` (width x height nybbles, rows packed) resampled by the
+// DrawChar's (src/ltms/StaticUnicodeBuffer.cpp): the glyph `pixels` (width x height nybbles, rows packed) resampled by the
 // scale for a font of line height `line`: bilinear, then the edges steepened again (more for a one-colour glyph, whose
 // nybbles are all 0 or 0xf, than for an antialiased one, whose grey steps are part of the design), so the scaled text
 // stays sharp. Answers the scaled glyph (in `out`) through the arguments, its offsets scaled with it.

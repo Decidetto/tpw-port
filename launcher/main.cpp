@@ -205,7 +205,7 @@ void tpw_stub_called(const char* name, bool platform, bool first) {
     ++gStubCallsByName[name];
     gLastStub = name;
     if (first || gTraceStubs)
-        tpw::LogLine(platform ? "unimplemented platform call: " : "not translated yet: ", name);
+        tpw::LogLine(platform ? "unimplemented platform call: " : "not wired up yet (does nothing): ", name);
     if (gAbortOnStub) std::abort();
 }
 

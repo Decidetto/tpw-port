@@ -1,7 +1,7 @@
 // cursor.cpp: Sam's Utilities' cursor (UCursor.cpp of the shim library) and its OpenGL
 // drawing (UCursorOpenGL, 0x1a590..0x1b0f4 of sams utils shared). The game loads each of
 // its cursor pictures (data:UI:cursors, 32 x 32 frames side by side in a TGA) into one of
-// these (src/ui_cursors.cpp), makes the current one current with Set and shows or hides it
+// these (src/game/ui/InterfaceBFCursor.cpp, src/game/ui/ui_main.cpp, src/game/ui/UIInterface.cpp), makes the current one current with Set and shows or hides it
 // with Show and Hide. On the Mac the object drew its current frame over the back buffer at
 // every buffer swap (its Swap member) while the toolbox arrow stayed hidden; here
 // tpw::SwapBuffers calls DrawCursorOverlay, which draws the frame at the window's mouse

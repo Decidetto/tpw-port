@@ -7,7 +7,7 @@
 // translated readers take a string word as the arena offset of a 16-byte representation (len +0, cap +4, refs +8, the arena offset
 // of the characters +0xc) and a list as three words (+0 size, +4 the sentinel's prev, +8 its next; a node is prev +0, next +4, the
 // string word +8). The functions below build those in the arena. The library's own translations (src/TPMain_std_basic_string_
-// basic_string.cpp, src/ui_Postcard_panel_std_list_std_basic_string_std_allocator_std_basi.cpp) work on native-pointer bodies,
+// basic_string.cpp, src/game/MslSupport.cpp) work on native-pointer bodies,
 // so they cannot be called on these words. A representation here is never shared (the copies copy the characters).
 //
 // One caller passes host objects instead: Email::SendToOutbox fills the Outbox, whose strings and address list are std::string and

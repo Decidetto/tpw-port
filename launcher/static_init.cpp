@@ -127,82 +127,82 @@ const StaticInitialiser kLibraryInitialisers[] = {
 };
 
 const StaticInitialiser kStaticInitialisers[] = {
-    {0x10003220, nullptr, "__sinit_TPMain_cpp"},  // host statics, src/TPMain.cpp
-    {0x10003d28, nullptr, "__sinit_FS_Registry_cpp"},  // host statics, src/FS_Registry.cpp
-    {0x100051e0, nullptr, "__sinit_FS_System_cpp"},  // host statics, src/FS_System.cpp
+    {0x10003220, nullptr, "__sinit_TPMain_cpp"},  // host statics, src/game/TPMain.cpp
+    {0x10003d28, nullptr, "__sinit_FS_Registry_cpp"},  // host statics, src/game/save/FS_Registry.cpp
+    {0x100051e0, nullptr, "__sinit_FS_System_cpp"},  // host statics, src/game/save/FS_System.cpp
     {0x1000757c, __sinit_3DFont_cpp, "__sinit_3DFont_cpp"},
     {0x1000fff0, __sinit_Advisor_cpp, "__sinit_Advisor_cpp"},  // not translated yet
     {0x1001c34c, __sinit_AdvisorScoring_cpp, "__sinit_AdvisorScoring_cpp"},
     {0x10021074, __sinit_HoardingsBalance_cpp, "__sinit_HoardingsBalance_cpp"},
-    {0x10021258, nullptr, "__sinit_MainBalance_cpp"},  // host statics, src/MainBalance.cpp
-    {0x100213fc, nullptr, "__sinit_OnlineBalance_cpp"},  // host statics, src/OnlineBalance.cpp
-    {0x100215a0, nullptr, "__sinit_OptionsBalance_cpp"},  // host statics, src/OptionsBalance.cpp
-    {0x10021750, nullptr, "__sinit_SoundBalance_cpp"},  // host statics, src/SoundBalance.cpp
-    {0x1003228c, nullptr, "__sinit_TPAdvisor_cpp"},  // host statics, src/TPAdvisor_model.cpp
-    {0x10036518, nullptr, "__sinit_TPCamera_cpp"},  // host statics, src/TPCamera_modes.cpp
+    {0x10021258, nullptr, "__sinit_MainBalance_cpp"},  // host statics, src/game/balance/MainBalance.cpp
+    {0x100213fc, nullptr, "__sinit_OnlineBalance_cpp"},  // host statics, src/game/balance/OnlineBalance.cpp
+    {0x100215a0, nullptr, "__sinit_OptionsBalance_cpp"},  // host statics, src/game/balance/OptionsBalance.cpp
+    {0x10021750, nullptr, "__sinit_SoundBalance_cpp"},  // host statics, src/game/balance/SoundBalance.cpp
+    {0x1003228c, nullptr, "__sinit_TPAdvisor_cpp"},  // host statics, src/game/advisor/TPAdvisor.cpp, src/game/TPCamera.cpp
+    {0x10036518, nullptr, "__sinit_TPCamera_cpp"},  // host statics, src/game/TPCamera.cpp
     {0x100459f4, __sinit_TPCoaster_cpp, "__sinit_TPCoaster_cpp"},  // not translated yet
-    {0x100599c8, nullptr, "__sinit_TPConfig_cpp"},  // host statics, src/TPConfig.cpp
+    {0x100599c8, nullptr, "__sinit_TPConfig_cpp"},  // host statics, src/game/TPConfig.cpp
     {0x1006c134, __sinit_TPRide_cpp, "__sinit_TPRide_cpp"},  // not translated yet
     {0x1006fd80, __sinit_Debug_cpp, "__sinit_Debug_cpp"},  // not translated yet
-    {0x1007d53c, nullptr, "__sinit_HLSprite_cpp"},  // host statics, src/HLSprite.cpp and src/ESP_sprites.cpp (see the note above)
-    {0x1007d8ac, nullptr, "__sinit_Colours_cpp"},  // host statics, src/Colours.cpp
+    {0x1007d53c, nullptr, "__sinit_HLSprite_cpp"},  // host statics, src/game/HLSprite.cpp (see the note above)
+    {0x1007d8ac, nullptr, "__sinit_Colours_cpp"},  // host statics, src/game/ui/Colours.cpp
     {0x1007de28, __sinit_intrface_cpp, "__sinit_intrface_cpp"},
-    {0x100815c8, nullptr, "__sinit_Mouse_cpp"},  // host statics, src/Mouse_modes.cpp
+    {0x100815c8, nullptr, "__sinit_Mouse_cpp"},  // host statics, src/game/Mouse.cpp
     {0x10088ff4, __sinit_LLCellMouse_cpp, "__sinit_LLCellMouse_cpp"},
     {0x10090b2c, __sinit_LLCellRide_cpp, "__sinit_LLCellRide_cpp"},
-    {0x10096f04, nullptr, "__sinit_LLCellSystem_cpp"},  // host statics, src/LLCellSystem_hoardwrite.cpp
+    {0x10096f04, nullptr, "__sinit_LLCellSystem_cpp"},  // host statics, src/game/park/LLCellSystem.cpp
     {0x100a6be0, __sinit_lobby_cpp, "__sinit_lobby_cpp"},
     {0x100afe1c, __sinit_lobby_globe_cpp, "__sinit_lobby_globe_cpp"},  // not translated yet
-    {0x100b54f8, nullptr, "__sinit_lobby_island_cpp"},  // host statics, src/lobby_islands_rest.cpp
+    {0x100b54f8, nullptr, "__sinit_lobby_island_cpp"},  // host statics, src/game/online/lobby_island.cpp, src/game/online/lobby_parser.cpp, src/game/online/LBFlyingMesh.cpp
     {0x100b6ae4, __sinit_lobby_parser_cpp, "__sinit_lobby_parser_cpp"},
     {0x100b7c9c, __sinit_lobby_screen_cpp, "__sinit_lobby_screen_cpp"},  // not translated yet
-    {0x100d85f0, nullptr, "__sinit_rsse_cpp"},  // host statics, src/rsse_commands.cpp
-    {0x100f1fb0, nullptr, "__sinit_analyser_cpp"},  // host statics, src/ParkAnalyser_month.cpp
-    {0x100f29b0, nullptr, "__sinit_Arrival_cpp"},  // host statics, src/Arrival_people.cpp
+    {0x100d85f0, nullptr, "__sinit_rsse_cpp"},  // host statics, src/game/rides/rsse.cpp
+    {0x100f1fb0, nullptr, "__sinit_analyser_cpp"},  // host statics, src/game/park/analyser.cpp
+    {0x100f29b0, nullptr, "__sinit_Arrival_cpp"},  // host statics, src/game/people/Arrival.cpp
     {0x100f4754, __sinit_BlockSave_cpp, "__sinit_BlockSave_cpp"},  // not translated yet
-    {0x100fbc84, nullptr, "__sinit_Entertainer_cpp"},  // host statics, src/Entertainer.cpp
+    {0x100fbc84, nullptr, "__sinit_Entertainer_cpp"},  // host statics, src/game/people/Entertainer.cpp
     {0x100fda00, __sinit_GoldenTickets_cpp, "__sinit_GoldenTickets_cpp"},  // not translated yet
     {0x100fef90, __sinit_guard_cpp, "__sinit_guard_cpp"},
-    {0x1010084c, nullptr, "__sinit_Handyman_cpp"},  // host statics, src/Handyman.cpp
-    {0x10103ec0, nullptr, "__sinit_MapDelta_cpp"},  // host statics, src/MapDelta.cpp
-    {0x101051d8, nullptr, "__sinit_mechanic_cpp"},  // host statics, src/Mechanic.cpp
+    {0x1010084c, nullptr, "__sinit_Handyman_cpp"},  // host statics, src/game/people/Handyman.cpp
+    {0x10103ec0, nullptr, "__sinit_MapDelta_cpp"},  // host statics, src/game/park/MapDelta.cpp
+    {0x101051d8, nullptr, "__sinit_mechanic_cpp"},  // host statics, src/game/people/mechanic.cpp
     {0x10105d2c, __sinit_MechanicHQ_cpp, "__sinit_MechanicHQ_cpp"},
-    {0x10111e94, nullptr, "__sinit_Object_cpp"},  // host statics, src/Object_serialise.cpp
+    {0x10111e94, nullptr, "__sinit_Object_cpp"},  // host statics, src/game/Object.cpp
     {0x10116418, __sinit_Peep_cpp, "__sinit_Peep_cpp"},
     {0x1011ba64, __sinit_Person_cpp, "__sinit_Person_cpp"},
     {0x10120bc8, __sinit_PersonQueue_cpp, "__sinit_PersonQueue_cpp"},
-    {0x10121a88, nullptr, "__sinit_Researcher_cpp"},  // host statics, src/Researcher.cpp
+    {0x10121a88, nullptr, "__sinit_Researcher_cpp"},  // host statics, src/game/people/Researcher.cpp
     {0x101247c4, __sinit_ResearchLab_cpp, "__sinit_ResearchLab_cpp"},
-    {0x10128350, nullptr, "__sinit_staff_cpp"},  // host statics, src/Staff.cpp
-    {0x1012a7b8, nullptr, "__sinit_StaffDB_cpp"},  // host statics, src/StaffDB_pool.cpp
+    {0x10128350, nullptr, "__sinit_staff_cpp"},  // host statics, src/game/people/staff.cpp
+    {0x1012a7b8, nullptr, "__sinit_StaffDB_cpp"},  // host statics, src/game/people/StaffDB.cpp, src/game/people/StaffInfo.cpp
     {0x1012c538, __sinit_StaffHQ_cpp, "__sinit_StaffHQ_cpp"},
     {0x1012ec48, __sinit_Thing_cpp, "__sinit_Thing_cpp"},
     {0x10130564, __sinit_TrainingCentre_cpp, "__sinit_TrainingCentre_cpp"},
     {0x10130e70, __sinit_vector2d_cpp, "__sinit_vector2d_cpp"},
-    {0x10134f5c, nullptr, "__sinit_vehicle_cpp"},  // host statics, src/Vehicle_serialise.cpp
+    {0x10134f5c, nullptr, "__sinit_vehicle_cpp"},  // host statics, src/game/rides/vehicle.cpp
     {0x10136060, __sinit_VehicleCallbacks_cpp, "__sinit_VehicleCallbacks_cpp"},
     {0x10141c14, __sinit_World_cpp, "__sinit_World_cpp"},
     {0x101435c4, __sinit_ui_visitorStatus_cpp, "__sinit_ui_visitorStatus_cpp"},
     {0x10146e9c, __sinit_ActionRecorder_cpp, "__sinit_ActionRecorder_cpp"},
-    {0x101476dc, nullptr, "__sinit_Clock_cpp"},  // host statics, src/Clock.cpp
-    {0x1014b118, nullptr, "__sinit_Game_cpp"},  // host statics, src/GlobalOrder.cpp
+    {0x101476dc, nullptr, "__sinit_Clock_cpp"},  // host statics, src/game/park/Clock.cpp
+    {0x1014b118, nullptr, "__sinit_Game_cpp"},  // host statics, src/game/TPGlobals.cpp
     {0x1014b5cc, __sinit_InGame_cpp, "__sinit_InGame_cpp"},
     {0x1014bf38, __sinit_ExitErr_cpp, "__sinit_ExitErr_cpp"},
     {0x101512fc, __sinit_keyboard_cpp, "__sinit_keyboard_cpp"},
-    {0x10151834, nullptr, "__sinit_Main_Cpp"},  // host statics, src/Main.cpp
+    {0x10151834, nullptr, "__sinit_Main_Cpp"},  // host statics, src/game/Main.cpp
     {0x10157010, __sinit_RideDB_cpp, "__sinit_RideDB_cpp"},
-    {0x1015b484, nullptr, "__sinit_SaveLoad_cpp"},  // host statics, src/SaveLoadHeader.cpp
-    {0x1015ea80, nullptr, "__sinit_Text_cpp"},  // host statics, src/Text.cpp
-    {0x1015f40c, nullptr, "__sinit_TPOptions_cpp"},  // host statics, src/TPOptions.cpp
-    {0x101683d0, nullptr, "__sinit_TPSettings_cpp"},  // host statics, src/TPSettings.cpp
-    {0x10168830, nullptr, "__sinit_VanillaTime_cpp"},  // host statics, src/VanillaTime.cpp
+    {0x1015b484, nullptr, "__sinit_SaveLoad_cpp"},  // host statics, src/game/save/SaveLoad.cpp, src/game/park/SkyObjects.cpp
+    {0x1015ea80, nullptr, "__sinit_Text_cpp"},  // host statics, src/game/Text.cpp
+    {0x1015f40c, nullptr, "__sinit_TPOptions_cpp"},  // host statics, src/game/TPOptions.cpp
+    {0x101683d0, nullptr, "__sinit_TPSettings_cpp"},  // host statics, src/game/TPResource.cpp, src/game/TPSettings.cpp
+    {0x10168830, nullptr, "__sinit_VanillaTime_cpp"},  // host statics, src/game/VanillaTime.cpp
     {0x1016f35c, nullptr, "__sinit_FS_MasterSave_cpp"},  // translated (v51117), left out: see the note above
     {0x10178308, sinit_FS_Online_cpp, "__sinit_FS_Online_cpp"},  // translated as sinit_FS_Online_cpp
     {0x1017ddb4, __sinit_FS_OnlineList_cpp, "__sinit_FS_OnlineList_cpp"},  // not translated yet
-    {0x1017fd58, nullptr, "__sinit_FS_UserInfo_cpp"},  // host statics, src/FS_UserInfo.cpp
+    {0x1017fd58, nullptr, "__sinit_FS_UserInfo_cpp"},  // host statics, src/game/save/FS_UserInfo.cpp
     {0x101877b8, __sinit_ui_main_cpp, "__sinit_ui_main_cpp"},
     {0x1018bda8, __sinit_ui_utils_cpp, "__sinit_ui_utils_cpp"},
-    {0x1018c8ec, nullptr, "__sinit_ui_tooltip_cpp"},  // host statics, src/ui_tooltip.cpp
+    {0x1018c8ec, nullptr, "__sinit_ui_tooltip_cpp"},  // host statics, src/game/ui/ui_tooltip.cpp
     {0x101902e8, __sinit_ui_textmanager_cpp, "__sinit_ui_textmanager_cpp"},  // not translated yet
     {0x101946ac, __sinit_ui_StatusPanel_cpp, "__sinit_ui_StatusPanel_cpp"},  // not translated yet
     {0x1019592c, __sinit_ui_allKidsPanel_cpp, "__sinit_ui_allKidsPanel_cpp"},  // not translated yet
@@ -235,7 +235,7 @@ const StaticInitialiser kStaticInitialisers[] = {
     {0x101ebae0, __sinit_ui_onlineParkInfoPanel_cpp, "__sinit_ui_onlineParkInfoPanel_cpp"},
     {0x101ec90c, __sinit_ui_onlineParkListPanel_cpp, "__sinit_ui_onlineParkListPanel_cpp"},
     {0x101ecfe8, __sinit_ui_publishParkPanel_cpp, "__sinit_ui_publishParkPanel_cpp"},
-    {0x101f499c, nullptr, "__sinit_ui_ErrorDisplay_cpp"},  // host statics, src/UI_pump.cpp (see the note above)
+    {0x101f499c, nullptr, "__sinit_ui_ErrorDisplay_cpp"},  // host statics, src/game/ui/UI_Base.cpp, src/game/ui/InterfaceMessageQueue.cpp, src/game/ui/ui_ErrorDisplay.cpp, src/game/ui/InterfaceWindow.cpp, src/game/ui/ui_Postcard.cpp, src/game/ui/ui_main.cpp, src/game/ui/InterfaceTimer.cpp, src/game/ui/UIInterface.cpp (see the note above)
     {0x101f7c74, __sinit_ui_IME_cpp, "__sinit_ui_IME_cpp"},
     {0x101fa88c, nullptr, "__sinit_ui_iterators_cpp"},  // host statics, include/ui_iterators.h
     {0x101fc260, __sinit_ui_mainmenu_cpp, "__sinit_ui_mainmenu_cpp"},
@@ -247,9 +247,9 @@ const StaticInitialiser kStaticInitialisers[] = {
     {0x1022bacc, __sinit_ui_worldLobbyController_cpp, "__sinit_ui_worldLobbyController_cpp"},
     {0x102319d4, __sinit_ui_2dmap_cpp, "__sinit_ui_2dmap_cpp"},
     {0x1023331c, __sinit_TPGlobals_cpp, "__sinit_TPGlobals_cpp"},
-    {0x102374a0, nullptr, "__sinit_GameSys_cpp"},  // host statics, src/GameSys.cpp
-    {0x1023779c, nullptr, "__sinit_ResolutionBalance_cpp"},  // host statics, src/ResolutionBalance.cpp
-    {0x10237a30, nullptr, "__sinit_TPDialog_cpp"},  // host statics, src/TPDialog.cpp
+    {0x102374a0, nullptr, "__sinit_GameSys_cpp"},  // host statics, src/game/GameSys.cpp
+    {0x1023779c, nullptr, "__sinit_ResolutionBalance_cpp"},  // host statics, src/game/balance/ResolutionBalance.cpp
+    {0x10237a30, nullptr, "__sinit_TPDialog_cpp"},  // host statics, src/game/ui/TPDialog.cpp
 };
 
 const char* volatile gRunning = nullptr;

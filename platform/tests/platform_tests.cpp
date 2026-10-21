@@ -1596,7 +1596,7 @@ static void TestWideScreen() {
             CHECK(std::fabs(wide - high * aspect) <= 1.0f + 1e-3f);
         }
     }
-    // The larger presets keep the width of their 16:9 size and take the height (src/TPConfig.cpp).
+    // The larger presets keep the width of their 16:9 size and take the height (src/game/TPConfig.cpp).
     CHECK(UI_WideScreenHeight(2560, 16.0f / 9.0f) == 1440);
     CHECK(UI_WideScreenHeight(3200, 16.0f / 9.0f) == 1800);
     CHECK(UI_WideScreenHeight(3840, 16.0f / 9.0f) == 2160);
@@ -1714,7 +1714,7 @@ static void TestWideScreen() {
 // the pixel under the pointer. The frames of 16:9 and 4:3 runs are the proof of the rest.
 static double PickAcrossPixel(int32_t wide, int32_t high, double px, bool scaled) {
     const double fov = 1.5707963705062866;   // gCameraFov: InitCamera's 90 degrees
-    const float centreX = static_cast<float>(static_cast<uint32_t>(wide)) * 0.5f;   // gViewCentreX (src/TPConfig.cpp)
+    const float centreX = static_cast<float>(static_cast<uint32_t>(wide)) * 0.5f;   // gViewCentreX (src/game/TPConfig.cpp)
     const float centreY = static_cast<float>(static_cast<uint32_t>(high)) * 0.5f;
     const double k = scaled ? UI_PickAcrossScale(centreX, centreY) : 1.0;
     const double sx = px / (2.0 * centreX);
@@ -2029,7 +2029,7 @@ TbSampleHeader* TbSoundPipeChannel::GetSampleHeader() {
     return &Fake(this)->header;
 }
 
-// The MPEG file player pool (src/TbMpegFilePlayer.cpp, not linked here): the two members the module calls are counted.
+// The MPEG file player pool (src/sound/LbMpeg.cpp, src/sound/MpegDecode.cpp, src/sound/CSprocketsModule.cpp, src/sound/StreamableMpeg2.cpp, not linked here): the two members the module calls are counted.
 static int gKeepFullCalls = 0;
 static uint8_t gKeepFullArgument = 0xff;
 static int gMaintainCalls = 0;

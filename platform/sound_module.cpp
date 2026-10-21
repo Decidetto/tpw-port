@@ -173,7 +173,7 @@ CSprocketsChannel** CSprocketsModule::Channels() const {
     return HostOf(this).channels;
 }
 
-// Unit v5L24: only the translated Init (src/CSprocketsModule_Init.cpp, weak) calls it; the launcher links the Init above.
+// Unit v5L24: only the translated Init (src/sound/CSprocketsModule.cpp, weak) calls it; the launcher links the Init above.
 void CSprocketsModule::SetChannels(CSprocketsChannel** channels) {
     HostOf(this).channels = channels;
 }

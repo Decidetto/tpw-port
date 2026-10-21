@@ -94,7 +94,7 @@ char16_t* MslWmemmove(char16_t* d, const char16_t* s, uint32_t n) {
 }  // namespace IME
 
 // rand of the C library (0x10239148), which the level setup calls for the park's seed
-// (src/host_leaves_BMP_InitSystem.cpp declares it as ::Rand): the one generator the MSL
+// (src/game/rides/BumperRide.cpp declares it as ::Rand): the one generator the MSL
 // rand and srand of platform/msl.cpp drive, so the game's seeding applies to it.
 int32_t Rand();
 int32_t Rand() { return msl_rand(); }

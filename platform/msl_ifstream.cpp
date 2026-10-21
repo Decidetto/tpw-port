@@ -1,4 +1,4 @@
-// msl_ifstream.cpp: the std::ifstream of SwearFilter::LoadWordList (src/SwearFilter_Filter.cpp,
+// msl_ifstream.cpp: the std::ifstream of SwearFilter::LoadWordList (src/game/online/IPBase.cpp,
 // unit v5094) on the host's file I/O. The translation keeps the Mac's stream object (SwearIfstream
 // in include/FS_MasterSave.h) and reaches MSL's basic_ifstream through the swear_callee shims
 // declared there. Until 2026-10-20 the launcher's generated stand-ins answered them with 0, so the

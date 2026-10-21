@@ -1,6 +1,6 @@
 // cvt_glue.cpp: the Metrowerks double-to-unsigned conversion glue at 0x10237cd8, which three
 // game headers name by its address (FloatToCell in include/TPCoaster.h, FLY_FloatToInt in
-// include/HLSprite.h, FloatToIntGlue in src/RideTypes_CalculateRootNodeFaceNormals.cpp).
+// include/HLSprite.h, FloatToIntGlue in src/game/rides/TPRide.cpp).
 // The routine compares against its TOC constants [0.0, 4294967296.0, 2147483648.0]: below
 // zero it gives 0, at 2^32 or above (or NaN, an unordered compare) 0xFFFFFFFF, below 2^31 a
 // truncating fctiwz, and otherwise the truncation of x - 2^31 with the top bit set.

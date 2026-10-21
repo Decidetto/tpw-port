@@ -6,14 +6,22 @@ A native port of Theme Park World (Sim Theme Park), built on the [tpw-decomp](ht
 tpw-decomp is the reference: the game's own functions, each behaving exactly as on the Mac, bugs included. This repository
 adds what it takes to play:
 
-- launcher/: the program (window, options, the game's start-up sequence) and the generated stand-ins for any function not
-  translated yet;
+- launcher/: the program (window, options, the game's start-up sequence) and the generated stand-ins for the names the
+  code calls that nothing defines yet;
 - platform/: the platform layer, the Mac Toolbox, Sound Sprockets, QuickTime and the game's Windows-style shims done on
   SDL3, OpenGL and CoreText;
 - overrides/: the port's fixes, 53 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what the port does
   and why. Each file there is built in place of the tpw-decomp file of the same path; the rest of tpw-decomp is built as
   it is. The headers are read from a copy of tpw-decomp's headers in the build folder with the overridden ones laid over
   it, so every file of both repositories sees the port's version of a header.
+
+## Where it stands
+
+Every function of the game is translated (tpw-decomp is at 100% of functions), and the port plays from the lobby into a
+park in both editions. Not everything is connected yet: a few hundred names the translated code calls (mostly per-file
+call shims, the online library and some platform calls) have no definition in the port. The launcher stands in for each
+one and logs "not wired up yet (does nothing): <name>" the first time it is reached; a platform call logs
+"unimplemented platform call: <name>". The online features (the lobby's globe) do not work yet.
 
 ## Nothing from the game
 

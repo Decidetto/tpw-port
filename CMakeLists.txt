@@ -114,7 +114,7 @@ if(TPW_BUILD_LAUNCHER AND SDL3_FOUND AND OpenGL_FOUND AND Python3_FOUND)
   target_include_directories(tpw_launcher_objects PRIVATE ${TPW_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/platform ${TPW_DECOMP_DIR}/platform launcher)
   target_link_libraries(tpw_launcher_objects PRIVATE SDL3::SDL3)
 
-  # zlib's inflate (src/lb_zlib.cpp) comes from the host, so the generator must not stand in for it.
+  # zlib's inflate (src/bullfrog/LbZLib.cpp) comes from the host, so the generator must not stand in for it.
   if(APPLE)
     set(TPW_STUB_SYSLIBS --syslib /System/Library/Frameworks/OpenGL.framework/OpenGL --syslib /usr/lib/libz.dylib)
   else()
@@ -140,12 +140,15 @@ if(TPW_BUILD_LAUNCHER AND SDL3_FOUND AND OpenGL_FOUND AND Python3_FOUND)
   add_executable(tpw_platform_tests platform/tests/platform_tests.cpp)
   # TestSound drives the real CSprocketsModule (platform/sound_module.cpp) over the real TbSoundSystemModule base; the pipe
   # channel it pulls from is the test program's own fake, so the game library is not linked.
-  target_sources(tpw_platform_tests PRIVATE ${TPW_DECOMP_DIR}/src/snd_handles.cpp ${TPW_DECOMP_DIR}/src/TbSoundSystemModule.cpp)
+  # The player's mail files (unit v5L48): the real SaveStream and outbox stream glue, on the user folder's paths. The
+  # tests build only those functions of their src files (platform/tests/platform_tests_keep.cmake).
+  include(platform/tests/platform_tests_keep.cmake)
+  list(TRANSFORM TPW_PLATFORM_TESTS_SOURCES PREPEND ${TPW_DECOMP_DIR}/src/)
+  target_sources(tpw_platform_tests PRIVATE ${TPW_PLATFORM_TESTS_SOURCES})
+  target_include_directories(tpw_platform_tests PRIVATE ${TPW_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/platform ${TPW_DECOMP_DIR}/platform)
+  tpw_slice(TARGET tpw_platform_tests NAME platform_tests KEEP ${TPW_PLATFORM_TESTS_KEEP})
   target_link_libraries(tpw_platform_tests PRIVATE tpw_platform)
   add_test(NAME platform COMMAND tpw_platform_tests)
-  # The player's mail files (unit v5L48): the real SaveStream and outbox stream glue, on the user folder's paths.
-  target_sources(tpw_platform_tests PRIVATE ${TPW_DECOMP_DIR}/src/email_load_AddressBook_Save.cpp
-                 ${TPW_DECOMP_DIR}/src/email_load_Outbox_ReadMailData.cpp)
 else()
   message(STATUS "tpw: launcher not built (needs SDL3, OpenGL and Python 3)")
 endif()

@@ -13,7 +13,7 @@ int32_t gFlyMinHeight = 0x2ee0;  // 0x1029d2c0
 uint32_t gLCFontIndex = 7;       // 0x102aed60
 int32_t gStaffRoomMsg406 = 1;    // 0x102aed68
 
-// 0x102b56c0, gColList of BMP_InsideArea.h: the bump world is 0x3c bytes on the Mac (src/host_leaves_BMP_InitSystem.cpp's view;
+// 0x102b56c0, gColList of BMP_InsideArea.h: the bump world is 0x3c bytes on the Mac (src/game/rides/BumperRide.cpp's view;
 // BMP_Load takes link nodes from its free list at 0x34) where the header's tabCOLLIST covers 0x20, the size a generated stand-in has.
 alignas(16) unsigned char gColListStorage[0x40] __asm__("_gColList");
 
