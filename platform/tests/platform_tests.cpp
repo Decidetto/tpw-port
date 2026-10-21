@@ -404,6 +404,32 @@ static void TestFileHandles() {
     CHECK(text == "0123456789");
     CHECK(fs::exists(config.userDir / "data" / "ten.bin"));
 
+    // A ride's height map (unit v5L44): SaveRideHeightMap's fopen of the Mac path goes to tpw::GamePathForWriting, the user folder's
+    // copy, and the next read of the path (CreateFile, as TPFile_Open's disc storage opens it) takes that copy before the game's.
+    const char* const kHeightMap = "data:levels:jungle:Features:1x1east:1x1east.hmp";
+    Touch(config.gameDir / "data" / "levels" / "jungle" / "Features" / "1x1east" / "1x1east.hmp", "disc");
+    InternalHandle* disc = CreateFile(kHeightMap, 0x80000000u, 0, nullptr, 3, 0, nullptr);
+    CHECK(disc != invalid && ReadFile(disc, buffer, 4, &done, nullptr) == 1 && done == 4 && std::memcmp(buffer, "disc", 4) == 0);
+    CHECK(CloseHandle(disc) == 1);
+    const std::string cached = tpw::GamePathForWriting(kHeightMap);
+    CHECK(Same(cached, config.userDir / "data" / "levels" / "jungle" / "Features" / "1x1east" / "1x1east.hmp"));
+    std::FILE* written = std::fopen(cached.c_str(), "wb");
+    CHECK(written != nullptr && std::fwrite("made!", 5, 1, written) == 1 && std::fclose(written) == 0);
+    InternalHandle* reread = CreateFile(kHeightMap, 0x80000000u, 0, nullptr, 3, 0, nullptr);
+    CHECK(reread != invalid && ReadFile(reread, buffer, 5, &done, nullptr) == 1 && done == 5 && std::memcmp(buffer, "made!", 5) == 0);
+    CHECK(CloseHandle(reread) == 1);
+    CHECK(fs::file_size(config.gameDir / "data" / "levels" / "jungle" / "Features" / "1x1east" / "1x1east.hmp") == 4);
+    // One the game folder has no copy of is made, folders and all, and then read back the same way.
+    const std::string fresh = tpw::GamePathForWriting("data:levels:jungle:Features:_gidol_5:_gidol.hmp");
+    CHECK(Same(fresh, config.userDir / "data" / "levels" / "jungle" / "Features" / "_gidol_5" / "_gidol.hmp"));
+    CHECK(fs::is_directory(config.userDir / "data" / "levels" / "jungle" / "Features" / "_gidol_5"));
+    CHECK(CreateFile("data:levels:jungle:Features:_gidol_5:_gidol.hmp", 0x80000000u, 0, nullptr, 3, 0, nullptr) == invalid);
+    written = std::fopen(fresh.c_str(), "wb");
+    CHECK(written != nullptr && std::fclose(written) == 0);
+    InternalHandle* made2 = CreateFile("data:levels:jungle:Features:_gidol_5:_gidol.hmp", 0x80000000u, 0, nullptr, 3, 0, nullptr);
+    CHECK(made2 != invalid && CloseHandle(made2) == 1);
+    CHECK(!fs::exists(config.gameDir / "data" / "levels" / "jungle" / "Features" / "_gidol_5"));
+
     // Listing more than one entry, then files and folders coming and going.
     _WIN32_FIND_DATAA found;
     InternalHandle* search = FindFirstFile("save:*", &found);
@@ -684,6 +710,13 @@ static void TestStrings() {
     CHECK(swprintf(text16, 0, u"") == -1 && text16[0] == u'z');
     CHECK(swprintf(text16, 16, u"") == 0 && text16[0] == 0);
     CHECK(swprintf(text16, 16, u"100%%%c", u'!') == 5 && std::u16string(text16) == u"100%!");
+    // the floating conversions take a double: the number text's "%.2f %%" (flag 8), TbDoubleVTag's "%f"
+    CHECK(swprintf(text16, 16, u"%.2f %%", static_cast<double>(100.0f * (512.0f * 0.0009765625f))) == 7 &&
+          std::u16string(text16) == u"50.00 %");
+    CHECK(swprintf(text16, 16, u"%f", 1.5) == 8 && std::u16string(text16) == u"1.500000");
+    CHECK(swprintf(text32, 32, u"%8.3f|%-6.1f|%+.0f|%d", -2.25, 0.25, 2.5, 7) == 20 &&
+          std::u16string(text32) == u"  -2.250|0.2   |+2|7");
+    CHECK(swprintf(text32, 32, u"%e|%G", 1250.0, 0.5) == 16 && std::u16string(text32) == u"1.250000e+03|0.5");
     CHECK(msl_lower_map['A'] == 'a' && msl_lower_map['Z'] == 'z' && msl_lower_map['['] == '[' && msl_lower_map['a'] == 'a');
     CHECK(NS_MacDoze::IsDBCSLeadByte(0x81) == 0);
 

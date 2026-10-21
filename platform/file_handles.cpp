@@ -264,4 +264,6 @@ int32_t ReadFileReference(int32_t reference, uint32_t offset, void* buffer, uint
     return -1;
 }
 
+std::string GamePathForWriting(const char* gamePath) { return HostPathForWriting(gamePath).string(); }
+
 }  // namespace tpw
