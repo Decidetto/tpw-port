@@ -30,6 +30,7 @@
 #include "platform/msl.h"
 #include "platform/samsutils.h"
 #include "ui_ime.h"
+#include "TbIRLE4bitFont.h"
 #include "UI_Base.h"
 #include "fit.h"
 #include "gdi_text.h"
@@ -1609,6 +1610,87 @@ static void TestWideScreen() {
 }
 #endif
 
+#ifdef TPW_PORT_FIX
+// ---- The fonts' scale (include/TbIRLE4bitFont.h) ---------------------------------------------------------------------
+// The line heights and advances scale with the UI (a byte still holds the line height) and DrawChar's glyphs are resampled
+// to match. The frames of a 3840 x 2160 run are the proof of the rest.
+static uint8_t NybbleAt(const uint8_t* pixels, int32_t width, int32_t x, int32_t y) {
+    const uint32_t i = static_cast<uint32_t>(y * width + x);
+    return (i & 1) != 0 ? pixels[i >> 1] & 0xf : pixels[i >> 1] >> 4;
+}
+
+static void TestFontScale() {
+    std::vector<uint8_t> out;
+    // Scale 1 (a UI no larger than 1024 x 768's): every font as it is.
+    gTbFontScale = 1.0f;
+    CHECK(TbFontScaleFor(13) == 1.0f && TbFontScaled(13, TbFontScaleFor(13)) == 13);
+    {
+        const uint8_t glyph[2] = {0xff, 0xff};
+        const uint8_t* pixels = glyph;
+        uint16_t width = 2, height = 2;
+        int32_t x = 1, y = -3;
+        TbFontScaleGlyph(13, pixels, width, height, x, y, out);
+        CHECK(pixels == glyph && width == 2 && height == 2 && x == 1 && y == -3);
+    }
+    // 3840 x 2160 at 16:9: the 2880 x 2160 box, 2.8125 times 1024 x 768.
+    gTbFontScale = 2.8125f;
+    CHECK(TbFontScaleFor(13) == 2.8125f);
+    CHECK(TbFontScaled(13, TbFontScaleFor(13)) == 37);   // GAME9's line, 36.6
+    CHECK(TbFontScaled(51, TbFontScaleFor(13)) == 143);  // CASHBIG's widest advance
+    CHECK(TbFontScaleFor(0) == 1.0f);
+    // The scaled line height always fits its byte: CASHBIG (88) stops at 255 at 4096 x 3072's scale of 4.
+    for (float scale : {1.25f, 2.0f, 2.8125f, 4.0f, 8.0f}) {
+        gTbFontScale = scale;
+        for (uint32_t line = 1; line <= 255; ++line) CHECK(TbFontScaled(line, TbFontScaleFor(line)) <= 255);
+    }
+    gTbFontScale = 4.0f;
+    CHECK(TbFontScaled(88, TbFontScaleFor(88)) == 255);
+    CHECK(TbFontScaled(55, TbFontScaleFor(55)) == 220);   // MENUBIG keeps the whole scale
+    // A solid 4 x 4 one-colour glyph at scale 2: 8 x 8, solid inside, the edges a step lighter, the offsets doubled.
+    gTbFontScale = 2.0f;
+    {
+        const uint8_t glyph[8] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+        const uint8_t* pixels = glyph;
+        uint16_t width = 4, height = 4;
+        int32_t x = 1, y = -3;
+        TbFontScaleGlyph(13, pixels, width, height, x, y, out);
+        CHECK(pixels == out.data() && width == 8 && height == 8 && x == 2 && y == -6);
+        for (int32_t row = 1; row < 7; ++row)
+            for (int32_t column = 1; column < 7; ++column) CHECK(NybbleAt(pixels, 8, column, row) == 0xf);
+        CHECK(NybbleAt(pixels, 8, 0, 3) > 8 && NybbleAt(pixels, 8, 0, 3) < 0xf);
+        CHECK(NybbleAt(pixels, 8, 0, 0) > 0 && NybbleAt(pixels, 8, 0, 0) < NybbleAt(pixels, 8, 0, 3));
+    }
+    // An empty glyph stays empty; a lone antialiased grey pixel stays a soft dot no darker than it was.
+    {
+        const uint8_t glyph[2] = {0x00, 0x00};
+        const uint8_t* pixels = glyph;
+        uint16_t width = 2, height = 2;
+        int32_t x = 0, y = 0;
+        TbFontScaleGlyph(13, pixels, width, height, x, y, out);
+        CHECK(width == 4 && height == 4);
+        for (int32_t i = 0; i < 16; ++i) CHECK(NybbleAt(pixels, 4, i % 4, i / 4) == 0);
+        const uint8_t grey[2] = {0x80, 0x00};
+        pixels = grey;
+        width = 2, height = 2;
+        TbFontScaleGlyph(13, pixels, width, height, x, y, out);
+        uint8_t darkest = 0;
+        for (int32_t i = 0; i < 16; ++i) darkest = std::max(darkest, NybbleAt(pixels, 4, i % 4, i / 4));
+        CHECK(darkest > 0 && darkest <= 8);
+    }
+    // The writers take the glyph's width as a byte: a wide glyph is scaled no wider than 255.
+    gTbFontScale = 8.0f;
+    {
+        std::vector<uint8_t> wide(50 * 2 / 2, 0xff);
+        const uint8_t* pixels = wide.data();
+        uint16_t width = 50, height = 2;
+        int32_t x = 0, y = 0;
+        TbFontScaleGlyph(13, pixels, width, height, x, y, out);
+        CHECK(width <= 255 && width >= 254 && out.size() == static_cast<size_t>((width * height + 1) / 2));
+    }
+    gTbFontScale = 1.0f;
+}
+#endif
+
 static void TestFitLetterbox() {
     // A window of the game's own shape: the box is the whole window.
     tpw::fit::Rect box = tpw::fit::Letterbox(1024, 768, 2048, 1536);
@@ -2364,6 +2446,7 @@ int main() {
     TestFitMouse();
 #ifdef TPW_PORT_FIX
     TestWideScreen();
+    TestFontScale();
 #endif
     TestSound(scratch);
     std::error_code ec;

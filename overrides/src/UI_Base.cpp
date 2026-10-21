@@ -2,6 +2,10 @@
 // (0x101c9ed8), the rectangle classes and the name hash so far.
 #include "UI_Base.h"
 
+#include <algorithm>
+
+#include "TbIRLE4bitFont.h"
+
 int16_t gUIRealScreenWidth;
 int16_t gUIRealScreenHeight;
 
@@ -19,6 +23,10 @@ void UI_SetRealScreenRez(int16_t width, int16_t height) {
         gUIRealScreenWidth = static_cast<int16_t>(UI_PillarboxWidth(height));
         gUIUnitWidth = UI_UnitWidthFor(width, height);
     }
+    // TPW_PORT_FIX v5L34 UI_SetRealScreenRez | Mac: no font scale; the fonts of the largest set were drawn for 1024 x 768, where the UI's 2048 x 1536 units take half a pixel each | Port: sets gTbFontScale (include/TbIRLE4bitFont.h) to the UI's pixels per unit over that, at least 1 | Why: text keeps the size the layout gives it at every resolution
+    const float across = static_cast<float>(gUIRealScreenWidth) / 1024.0f;
+    const float down = static_cast<float>(gUIRealScreenHeight) / 768.0f;
+    gTbFontScale = std::max(1.0f, std::min(across, down));
 }
 
 // ---- CoolRegion (0x101d5a3c..0x101d5b74): the base of the UI's regions
