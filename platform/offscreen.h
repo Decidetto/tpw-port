@@ -12,6 +12,9 @@ namespace tpw::offscreen {
 bool Create(int width, int height);
 void Destroy();
 bool Ready();
+// The largest width or height the driver's framebuffers and textures take (GL_MAX_RENDERBUFFER_SIZE_EXT and
+// GL_MAX_TEXTURE_SIZE, the smaller); 0 when it does not say. Needs a context current.
+int LargestSize();
 
 // Binds the framebuffer the game draws into for both drawing and reading, or the present one.
 void BindGame();

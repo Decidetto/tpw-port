@@ -10,6 +10,7 @@
 #include <SDL3/SDL.h>
 #include <dlfcn.h>
 
+#include <algorithm>
 #include <cstring>
 
 #include "offscreen.h"
@@ -25,6 +26,7 @@ void glDisable(unsigned int capability);
 void glColorMask(unsigned char red, unsigned char green, unsigned char blue, unsigned char alpha);
 unsigned int glGetError();
 const unsigned char* glGetString(unsigned int name);
+void glGetIntegerv(unsigned int name, int* values);
 }
 
 namespace {
@@ -131,6 +133,13 @@ bool Create(int width, int height) {
         return false;
     }
     glGetError();   // (anything pending is not ours)
+    int largest = 0;
+    glGetIntegerv(0x84E8, &largest);   // GL_MAX_RENDERBUFFER_SIZE_EXT
+    if (largest > 0 && (width > largest || height > largest)) {
+        tpw::Log("fit: %dx%d is larger than the driver's %d-pixel framebuffers; pick a smaller --resolution", width, height,
+                 largest);
+        return false;
+    }
     if (!MakeTarget(gGame, width, height, true) || !MakeTarget(gPresent, width, height, false) || glGetError() != 0) {
         tpw::Log("fit: could not make a %dx%d framebuffer; the window stays 1:1", width, height);
         FreeTarget(gGame);
@@ -165,6 +174,16 @@ void Destroy() {
 }
 
 bool Ready() { return gReady; }
+
+int LargestSize() {
+    int renderbuffer = 0;
+    int texture = 0;
+    glGetIntegerv(0x84E8, &renderbuffer);   // GL_MAX_RENDERBUFFER_SIZE_EXT
+    glGetIntegerv(0x0D33, &texture);        // GL_MAX_TEXTURE_SIZE
+    glGetError();
+    if (renderbuffer <= 0) return texture > 0 ? texture : 0;
+    return texture > 0 ? std::min(renderbuffer, texture) : renderbuffer;
+}
 bool GameBound() { return gReady && gGameBound; }
 
 void BindGame() {

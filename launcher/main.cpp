@@ -21,12 +21,20 @@
 #include "TPMain.h"
 #include "tpw_probe.h"
 #include "ResolutionBalance.h"
+#include "UI_Base.h"
 #include "platform.h"
 #include "static_init.h"
 #include "stubs.h"
 
 namespace {
-constexpr int32_t kDefaultResolution = 7;  // Resolution.sam's 2048 x 1536 preset (the maintainer, 2026-10-11).
+// The largest preset, 4096 x 3072 (3840 x 2160 at 16:9), rendered offscreen and scaled to the window (the maintainer,
+// 2026-10-20; it was Resolution.sam's 2048 x 1536 preset, 7, from 2026-10-11). Presets 8 to 10 are the port's own.
+constexpr int32_t kDefaultResolution = 10;
+// The screen's shape: 16:9 unless --aspect asks otherwise (the maintainer, 2026-10-20). Presets 1 to 7 keep their
+// height and take the width the shape gives them, so 2048 x 1536 becomes 2730 x 1536; presets 8 to 10 keep the width of
+// their 16:9 size (2560, 3200, 3840) and take the height. 4:3 is the original game's layout exactly.
+constexpr int kDefaultAspectWide = 16;
+constexpr int kDefaultAspectHigh = 9;
 bool gAbortOnStub = false;
 bool gTraceStubs = false;
 long gStubCalls = 0;
@@ -51,11 +59,42 @@ private:
 };
 
 int ResolutionPreset(const char* size) {
-    const char* sizes[] = {"512x384", "640x480", "800x600", "1024x768", "1280x1024", "1600x1200", "2048x1536"};
-    for (int i = 0; i < 7; ++i)
+    const char* sizes[] = {"512x384",   "640x480",   "800x600",   "1024x768",  "1280x1024",
+                           "1600x1200", "2048x1536", "2560x1920", "3200x2400", "4096x3072"};
+    for (int i = 0; i < 10; ++i)
         if (std::strcmp(size, sizes[i]) == 0) return i + 1;
     return 0;
 }
+
+// W:H with both whole and positive, no narrower than 4:3; 0 for anything else.
+float ParseAspect(const char* text) {
+    int wide = 0;
+    int high = 0;
+    char end = 0;
+    if (std::sscanf(text, "%d:%d%c", &wide, &high, &end) != 2 || wide <= 0 || high <= 0 || wide * 3 < high * 4) return 0.0f;
+    return static_cast<float>(wide) / static_cast<float>(high);
+}
+
+#ifdef TPW_PORT_FIX
+// The largest preset, from `preset` down, whose size at the launcher's aspect this machine's OpenGL can render (limit:
+// tpw::LargestGameSize, 0 when unknown); said once in the log when it is not `preset`.
+int32_t FittingPreset(int32_t preset, int limit) {
+    if (preset <= 0 || limit <= 0) return preset;
+    int32_t chosen = preset;
+    int32_t wide = 0;
+    int32_t high = 0;
+    UI_PresetSize(chosen, gUIWideAspect, wide, high);
+    while (chosen > 1 && (wide > limit || high > limit)) UI_PresetSize(--chosen, gUIWideAspect, wide, high);
+    if (chosen != preset) {
+        int32_t wanted = 0;
+        int32_t wantedHigh = 0;
+        UI_PresetSize(preset, gUIWideAspect, wanted, wantedHigh);
+        tpw::Log("resolution: %dx%d is larger than this machine's %d-pixel framebuffers; %dx%d (preset %d) instead", wanted,
+                 wantedHigh, limit, wide, high, chosen);
+    }
+    return chosen;
+}
+#endif
 
 int RunGame(int32_t resolution) {
     // What the Mac's runtime did before main (launcher/static_init.cpp).
@@ -110,8 +149,16 @@ void Usage(const char* program) {
                  "                 (default: $TPW_GAME_DIR, else \"Theme Park Data\" here)\n"
                  "  --user DIR     where saves and settings go (default: a per-user folder)\n"
                  "  --windowed     run in a window instead of full screen\n"
-                 "  --resolution WxH  select a Resolution.sam preset (512x384, 640x480, 800x600,\n"
-                 "                    1024x768, 1280x1024, 1600x1200 or 2048x1536; default: 2048x1536)\n"
+                 "  --resolution WxH  the game's resolution, named by its 4:3 size: a Resolution.sam preset (512x384,\n"
+                 "                    640x480, 800x600, 1024x768, 1280x1024, 1600x1200, 2048x1536) or a larger one of the\n"
+                 "                    port's (2560x1920, 3200x2400, 4096x3072; default: 4096x3072). The game renders at it\n"
+                 "                    offscreen and the window shows it scaled\n"
+                 "  --aspect W:H   the screen's shape (default 16:9). The Resolution.sam presets keep their height and are\n"
+                 "                 widened (2048x1536 becomes 2730x1536 at 16:9, 2458x1536 at 16:10); the larger ones keep\n"
+                 "                 the width of their 16:9 size (2560x1440, 3200x1800, 3840x2160 at 16:9; 3840x2400 at\n"
+                 "                 16:10). The park is seen further to the sides, the panels keep to the screen's edges\n"
+                 "                 and the 4:3 screens are pillarboxed. --aspect 4:3 is the original layout exactly, at\n"
+                 "                 the 4:3 size\n"
                  "  --no-intro     skip the logo, the intro movie and the lobby: straight into a park\n"
                  "  --frames N     stop after N passes of the main loop\n"
                  "  --click X,Y@N  a scripted left click at game pixel (X, Y): pressed on pass N, released on pass N+1\n"
@@ -159,8 +206,9 @@ void tpw_stub_called(const char* name, bool platform, bool first) {
 }
 
 int main(int argc, char** argv) {
-    // a trap (a hardened library check) and an illegal instruction get the backtrace too
-    for (int crash : {SIGSEGV, SIGBUS, SIGTRAP, SIGILL}) {
+    // a trap (a hardened library check), an illegal instruction and an abort (a failed stack check is a silent one) get
+    // the backtrace too
+    for (int crash : {SIGSEGV, SIGBUS, SIGTRAP, SIGILL, SIGABRT}) {
         struct sigaction action{};
         action.sa_sigaction = OnCrashInfo;
         action.sa_flags = SA_SIGINFO;
@@ -169,6 +217,8 @@ int main(int argc, char** argv) {
     }
     tpw::Config& config = tpw::config();
     int32_t resolution = kDefaultResolution;
+    int aspectWide = kDefaultAspectWide;
+    int aspectHigh = kDefaultAspectHigh;
     if (const char* dir = std::getenv("TPW_GAME_DIR")) config.gameDir = dir;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -191,6 +241,13 @@ int main(int argc, char** argv) {
                 return 2;
             }
             tpw::Log("resolution override: %s", size);
+        }
+        else if (arg == "--aspect") {
+            const char* shape = value();
+            if (ParseAspect(shape) == 0.0f || std::sscanf(shape, "%d:%d", &aspectWide, &aspectHigh) != 2) {
+                std::fprintf(stderr, "launcher: --aspect wants W:H, no narrower than 4:3 (16:9, 16:10, 4:3): %s\n", shape);
+                return 2;
+            }
         }
         else if (arg == "--no-intro") config.debugOptions[3] = 0;
         else if (arg == "--frames") config.maxFrames = std::atoi(value());
@@ -270,6 +327,25 @@ int main(int argc, char** argv) {
     std::filesystem::create_directories(config.userDir, ec);
     tpw::Log("game folder: %s", config.gameDir.string().c_str());
     tpw::Log("user folder: %s", config.userDir.string().c_str());
+
+    // 4:3 leaves the game's own sizes alone (the 1280 x 1024 preset stays 5:4); anything wider widens the screen.
+#ifdef TPW_PORT_FIX
+    gUIWideAspect = aspectWide * 3 == aspectHigh * 4 ? 0.0f : static_cast<float>(aspectWide) / static_cast<float>(aspectHigh);
+    tpw::Log("aspect: %d:%d%s", aspectWide, aspectHigh, gUIWideAspect == 0.0f ? " (the original 4:3 layout)" : "");
+    gUIHighPresets = 1;
+    // The preset is the size the game renders at, not the window's; a machine whose framebuffers are smaller gets the
+    // largest preset that fits. TPW_LARGEST_GAME_SIZE stands in for the machine's limit, to check the fallback.
+    if (resolution > 0) {
+        const char* forced = std::getenv("TPW_LARGEST_GAME_SIZE");
+        resolution = FittingPreset(resolution, forced != nullptr ? std::atoi(forced) : tpw::LargestGameSize());
+    }
+#else
+    tpw::Log("aspect: 4:3 (a build without the port's fixes has the original layout only)");
+    if (resolution > 7) {
+        tpw::Log("resolution: a build without the port's fixes has Resolution.sam's presets only; 2048x1536");
+        resolution = 7;
+    }
+#endif
 
     const int result = RunGame(resolution);
     Report();

@@ -120,4 +120,6 @@ int16_t GetAsyncKeyState(int32_t virtualKey) {
     return down ? static_cast<int16_t>(0x8000) : 0;
 }
 
+int16_t GetKeyState(int32_t virtualKey) { return GetAsyncKeyState(virtualKey); }
+
 }  // namespace NS_MacDoze

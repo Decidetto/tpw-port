@@ -30,6 +30,7 @@
 #include "platform/msl.h"
 #include "platform/samsutils.h"
 #include "ui_ime.h"
+#include "UI_Base.h"
 #include "fit.h"
 #include "gdi_text.h"
 #include "resource_fork.h"
@@ -1461,6 +1462,136 @@ static void TestFitArithmetic() {
     CHECK(top == (1400 - 768 - 28) / 2 + 28);
 }
 
+#ifdef TPW_PORT_FIX
+// ---- The widescreen screen (include/UI_Base.h) -----------------------------------------------------------------------
+// The arithmetic the game runs: the preset's height at the launcher's aspect, the 4:3 box the 2D art keeps, the unit
+// space's width and the anchoring of the 2048-unit layout in it. The frames of a 16:9 run are the proof of the rest.
+static void TestWideScreen() {
+    // The preset's height is kept and the width rounded to an even number of pixels.
+    CHECK(UI_WideScreenWidth(1536, 16.0f / 9.0f) == 2730);   // 2730.67: the nearest even width
+    CHECK(UI_WideScreenWidth(1536, 16.0f / 10.0f) == 2458);   // 2457.6
+    CHECK(UI_WideScreenWidth(1536, 4.0f / 3.0f) == 2048);
+    CHECK(UI_WideScreenWidth(768, 16.0f / 9.0f) == 1366);
+    CHECK(UI_WideScreenWidth(480, 16.0f / 9.0f) == 854);
+    CHECK(UI_WideScreenWidth(1536, 21.0f / 9.0f) == 3584);
+    for (int high = 240; high <= 2160; high += 2) {
+        for (float aspect : {16.0f / 9.0f, 16.0f / 10.0f, 21.0f / 9.0f}) {
+            const int wide = UI_WideScreenWidth(high, aspect);
+            CHECK(wide % 2 == 0);
+            CHECK(std::fabs(wide - high * aspect) <= 1.0f + 1e-3f);
+        }
+    }
+    // The larger presets keep the width of their 16:9 size and take the height (src/TPConfig.cpp).
+    CHECK(UI_WideScreenHeight(2560, 16.0f / 9.0f) == 1440);
+    CHECK(UI_WideScreenHeight(3200, 16.0f / 9.0f) == 1800);
+    CHECK(UI_WideScreenHeight(3840, 16.0f / 9.0f) == 2160);
+    CHECK(UI_WideScreenHeight(2560, 16.0f / 10.0f) == 1600);
+    CHECK(UI_WideScreenHeight(3200, 16.0f / 10.0f) == 2000);
+    CHECK(UI_WideScreenHeight(3840, 16.0f / 10.0f) == 2400);
+    for (int wide = 320; wide <= 4096; wide += 2) {
+        for (float aspect : {16.0f / 9.0f, 16.0f / 10.0f, 21.0f / 9.0f}) {
+            const int high = UI_WideScreenHeight(wide, aspect);
+            CHECK(high % 2 == 0);
+            CHECK(std::fabs(high - wide / aspect) <= 1.0f + 1e-3f);
+        }
+    }
+    // Every preset's size, as the game sets it and the launcher's fallback measures it.
+    {
+        const int32_t sizes[3][10][2] = {
+            {{512, 384}, {640, 480}, {800, 600}, {1024, 768}, {1280, 1024}, {1600, 1200}, {2048, 1536}, {2560, 1920},
+             {3200, 2400}, {4096, 3072}},
+            {{682, 384}, {854, 480}, {1066, 600}, {1366, 768}, {1820, 1024}, {2134, 1200}, {2730, 1536}, {2560, 1440},
+             {3200, 1800}, {3840, 2160}},
+            {{614, 384}, {768, 480}, {960, 600}, {1228, 768}, {1638, 1024}, {1920, 1200}, {2458, 1536}, {2560, 1600},
+             {3200, 2000}, {3840, 2400}}};
+        const float aspects[3] = {0.0f, 16.0f / 9.0f, 16.0f / 10.0f};
+        for (int a = 0; a < 3; ++a) {
+            for (int preset = 1; preset <= 10; ++preset) {
+                int32_t wide = 0;
+                int32_t high = 0;
+                UI_PresetSize(preset, aspects[a], wide, high);
+                CHECK(wide == sizes[a][preset - 1][0]);
+                CHECK(high == sizes[a][preset - 1][1]);
+            }
+        }
+    }
+    // The largest one at 16:9: the unit space is 2730 units across, as at 2730 x 1536, and the 4:3 box is 2880 pixels.
+    CHECK(UI_UnitWidthFor(3840, 2160) == 2730);
+    CHECK(UI_PillarboxLeft(3840, 2160) == 480);
+    CHECK(UI_UnitWidthFor(4096, 3072) == 0x800);
+
+    // The 4:3 box in the middle of the screen: the pillarbox of the splash, the loading screens and the films.
+    CHECK(UI_PillarboxWidth(1536) == 2048);
+    CHECK(UI_PillarboxLeft(2730, 1536) == 341);
+    CHECK(UI_PillarboxLeft(2458, 1536) == 205);
+    CHECK(UI_PillarboxLeft(1366, 768) == 171);
+    CHECK(UI_PillarboxLeft(2048, 1536) == 0);   // 4:3: no bars
+    CHECK(UI_PillarboxLeft(1280, 1024) == 0);   // 5:4 (narrower): no bars either
+    // The box and its two bars cover the screen, the bars to within a pixel of each other.
+    for (int high = 240; high <= 2160; high += 6) {
+        const int wide = UI_WideScreenWidth(high, 16.0f / 9.0f);
+        const int left = UI_PillarboxLeft(wide, high);
+        const int right = wide - left - UI_PillarboxWidth(high);
+        CHECK(left >= 0 && right >= left && right - left <= 1);
+    }
+
+    // The unit space: 2048 units span the 4:3 box, so a unit is as wide as it is high (1536 units span the height).
+    CHECK(UI_UnitWidthFor(2048, 1536) == 0x800);
+    CHECK(UI_UnitWidthFor(1280, 1024) == 0x800);
+    CHECK(UI_UnitWidthFor(2730, 1536) == 2730);
+    CHECK(UI_UnitWidthFor(2458, 1536) == 2458);
+    CHECK(UI_UnitWidthFor(1366, 768) == 2732);
+    CHECK(UI_UnitWidthFor(0, 0) == 0x800);
+    // The mouse: the game maps a pixel to units by (px << 11) / the 4:3 box's width, so the first pixel is unit 0 and
+    // the last one lands inside the unit space, never past it; the middle pixel is the middle unit.
+    for (int high : {480, 600, 768, 1024, 1200, 1536, 1440, 1800, 2160, 2400}) {
+        for (float aspect : {16.0f / 9.0f, 16.0f / 10.0f}) {
+            const int wide = UI_WideScreenWidth(high, aspect);
+            const int box = UI_PillarboxWidth(high);
+            const int units = UI_UnitWidthFor(wide, high);
+            CHECK(((wide - 1) << 11) / box < units);
+            CHECK(((wide - 1) << 11) / box >= units - (0x800 / box) - 2);
+            CHECK(std::abs(((wide / 2) << 11) / box - units / 2) <= 2);
+        }
+    }
+
+    // The anchoring: nothing moves on a 4:3 screen.
+    CHECK(UI_WideAnchor(0, 0x7ff, 0x800) == 0);
+    CHECK(UI_WideAnchor(1700, 0x7ff, 0x800) == 0);
+    // At 16:9 (2730 units, 682 more): a full-width window goes to the middle (341 each side), the money and the
+    // control panel (left third) stay left, the advisor and the lobby's bars (right third) go to the right edge, a
+    // dialog in the middle goes to the middle.
+    CHECK(UI_WideAnchor(0, 0x7ff, 2730) == 341);
+    CHECK(UI_WideAnchor(-10, 0x800, 2730) == 341);
+    CHECK(UI_WideAnchor(0, 300, 2730) == 0);
+    CHECK(UI_WideAnchor(20, 650, 2730) == 0);
+    CHECK(UI_WideAnchor(1700, 0x7ff, 2730) == 682);
+    CHECK(UI_WideAnchor(1050, 2040, 2730) == 682);
+    CHECK(UI_WideAnchor(600, 1400, 2730) == 341);
+    // The thirds' edges: a centre at exactly 682 or 1365 is in the middle third.
+    CHECK(UI_WideAnchor(682, 682, 2730) == 341);
+    CHECK(UI_WideAnchor(681, 681, 2730) == 0);
+    CHECK(UI_WideAnchor(1365, 1365, 2730) == 341);
+    CHECK(UI_WideAnchor(1366, 1366, 2730) == 682);
+    // A right-anchored window keeps its distance from the right edge; a left one from the left edge.
+    CHECK(0x7ff - 1700 == (2730 - 1) - (1700 + UI_WideAnchor(1700, 0x7ff, 2730)));
+    // 16:10 (2458 units, 410 more).
+    CHECK(UI_WideAnchor(0, 0x7ff, 2458) == 205);
+    CHECK(UI_WideAnchor(1700, 0x7ff, 2458) == 410);
+
+    // The window of a 16:9 game on a 16:9 screen has no bars: the box fills it to the pixel.
+    for (int wide : {1920, 2560, 3840}) {
+        const int high = wide * 9 / 16;
+        const tpw::fit::PixelBox pixels = tpw::fit::RoundBox(tpw::fit::Letterbox(wide, high, 2730, 1536));
+        CHECK(pixels.left == 0 && pixels.top == 0 && pixels.right == wide && pixels.bottom == high);
+    }
+    // The MacBook (2056 x 1290 usable points at 2x): the 16:9 game fills its width, as the launcher logged on 2026-10-20
+    // ("fit: game 2730x1536 in a 2056x1156-point window").
+    CheckFit(2056, 1290, 2.0, 2730, 1536, 2056, 1156, 2056.0 * 2.0 / 2730.0);
+    CheckFit(2056, 1290, 2.0, 2458, 1536, 2019, 1262, 2019.0 * 2.0 / 2458.0);   // 16:10 fills the height
+}
+#endif
+
 static void TestFitLetterbox() {
     // A window of the game's own shape: the box is the whole window.
     tpw::fit::Rect box = tpw::fit::Letterbox(1024, 768, 2048, 1536);
@@ -2213,6 +2344,9 @@ int main() {
     TestFitArithmetic();
     TestFitLetterbox();
     TestFitMouse();
+#ifdef TPW_PORT_FIX
+    TestWideScreen();
+#endif
     TestSound(scratch);
     std::error_code ec;
     fs::remove_all(scratch, ec);

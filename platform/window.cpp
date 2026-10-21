@@ -164,6 +164,26 @@ void WindowSizes(int& pointsWide, int& pointsHigh, int& pixelsWide, int& pixelsH
 
 bool FitActive() { return gWindowMade && gFit.wanted; }
 
+int LargestGameSize() {
+    if (!StartVideo()) return 0;
+    SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_Window* probe = SDL_CreateWindow("", 1, 1, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    if (probe == nullptr) return 0;
+    int largest = 0;
+    if (SDL_GLContext context = SDL_GL_CreateContext(probe)) {
+        largest = offscreen::LargestSize();
+        SDL_GL_MakeCurrent(probe, nullptr);
+        SDL_GL_DestroyContext(context);
+    }
+    SDL_DestroyWindow(probe);
+    return largest;
+}
+
 // The game's resolution, as the game sets it (SetDisplayMode, MoveWindow). Without the fit the window is resized to it,
 // as before; with it the window is re-fitted and the framebuffer made again at the new size.
 void SetGameSize(int wide, int high) {
