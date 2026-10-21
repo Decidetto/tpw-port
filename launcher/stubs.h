@@ -3,7 +3,7 @@
 #pragma once
 
 // Called by a stand-in every time it runs: `name` is the function it stands in for,
-// `platform` tells a platform call from a game function nobody has translated yet, and
+// `platform` tells a platform call from a game function that is not wired up yet, and
 // `first` is true the first time that stand-in is hit.
 void tpw_stub_called(const char* name, bool platform, bool first);
 
