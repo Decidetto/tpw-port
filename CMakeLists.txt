@@ -143,6 +143,9 @@ if(TPW_BUILD_LAUNCHER AND SDL3_FOUND AND OpenGL_FOUND AND Python3_FOUND)
   target_sources(tpw_platform_tests PRIVATE ${TPW_DECOMP_DIR}/src/snd_handles.cpp ${TPW_DECOMP_DIR}/src/TbSoundSystemModule.cpp)
   target_link_libraries(tpw_platform_tests PRIVATE tpw_platform)
   add_test(NAME platform COMMAND tpw_platform_tests)
+  # The player's mail files (unit v5L48): the real SaveStream and outbox stream glue, on the user folder's paths.
+  target_sources(tpw_platform_tests PRIVATE ${TPW_DECOMP_DIR}/src/email_load_AddressBook_Save.cpp
+                 ${TPW_DECOMP_DIR}/src/email_load_Outbox_ReadMailData.cpp)
 else()
   message(STATUS "tpw: launcher not built (needs SDL3, OpenGL and Python 3)")
 endif()

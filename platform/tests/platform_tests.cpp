@@ -22,6 +22,7 @@
 
 #include "Ptr32.h"
 #include "dialogs.h"
+#include "email.h"
 #include "TbAudioSystem.h"
 #include "platform.h"
 #include "platform/arena.h"
@@ -429,6 +430,59 @@ static void TestFileHandles() {
     InternalHandle* made2 = CreateFile("data:levels:jungle:Features:_gidol_5:_gidol.hmp", 0x80000000u, 0, nullptr, 3, 0, nullptr);
     CHECK(made2 != invalid && CloseHandle(made2) == 1);
     CHECK(!fs::exists(config.gameDir / "data" / "levels" / "jungle" / "Features" / "_gidol_5"));
+
+    // The player's mail files (unit v5L48). tpw::GamePathForReading gives the user folder's copy of a game path, else the game
+    // folder's, else the path as it is (so a missing file still fails to open).
+    Touch(config.gameDir / "save" / "users" / "T5L48" / "outbox" / "00000001.jpg", "game");
+    CHECK(Same(tpw::GamePathForReading("TPW:Theme Park Data:save:users:T5L48:outbox:00000001.jpg"),
+               config.gameDir / "save" / "users" / "T5L48" / "outbox" / "00000001.jpg"));
+    Touch(config.userDir / "save" / "users" / "T5L48" / "outbox" / "00000001.jpg", "user");
+    CHECK(Same(tpw::GamePathForReading("TPW:Theme Park Data:save:users:T5L48:outbox:00000001.jpg"),
+               config.userDir / "save" / "users" / "T5L48" / "outbox" / "00000001.jpg"));
+    CHECK(tpw::GamePathForReading("TPW:Theme Park Data:save:users:T5L48:outbox:00000002.jpg") ==
+          "TPW:Theme Park Data:save:users:T5L48:outbox:00000002.jpg");
+    // AddressBook::Save, Outbox::Save and Outbox::WriteMailData write through the SaveStream glue: its open of the colon path makes
+    // the file in the user folder, and the loaders' CreateFile (TextFile::Open) reads the same file back.
+    {
+        const char* const kBook = "TPW:Theme Park Data:save:users:T5L48:addrbook.dat";
+        SaveStream out;
+        SaveStreamCtor(&out);
+        CHECK(SaveStreamOpen(&out, kBook) && out.filebufOpen == 1);
+        SaveStreamWrite(&out, "a@b.c\n");
+        CHECK(SaveStreamClose(&out));
+        SaveStreamDestroy(&out);
+        const fs::path bookFile = config.userDir / "save" / "users" / "T5L48" / "addrbook.dat";
+        CHECK(fs::exists(bookFile) && fs::file_size(bookFile) == 6);
+        CHECK(!fs::exists(kBook) && !fs::exists(config.gameDir / "save" / "users" / "T5L48" / "addrbook.dat"));
+        InternalHandle* book = CreateFile(kBook, 0x80000000u, 0, nullptr, 3, 0, nullptr);
+        CHECK(book != invalid && ReadFile(book, buffer, 6, &done, nullptr) == 1 && done == 6 && std::memcmp(buffer, "a@b.c\n", 6) == 0);
+        CHECK(CloseHandle(book) == 1);
+        // A mail written the same way into the outbox (the user folder's, as Outbox::Load's CreateDirectory makes it) is read back by
+        // ReadMailData's stream.
+        const char* const kMail = "TPW:Theme Park Data:save:users:T5L48:outbox:00000003.dat";
+        SaveStreamCtor(&out);
+        CHECK(SaveStreamOpen(&out, kMail));
+        SaveStreamWrite(&out, "7\nsubject\n");
+        CHECK(SaveStreamClose(&out));
+        SaveStreamDestroy(&out);
+        const fs::path mailFile = config.userDir / "save" / "users" / "T5L48" / "outbox" / "00000003.dat";
+        CHECK(fs::exists(mailFile) && fs::file_size(mailFile) == 10);
+        SaveStream in;
+        outbox_callee::StreamCtor(&in);
+        CHECK(outbox_callee::StreamOpen(&in, kMail) && in.filebufOpen == 1);
+        char line[16] = {};
+        outbox_callee::StreamGetline(&in, line, sizeof(line), outbox_callee::StreamWiden(&in));
+        CHECK(std::strcmp(line, "7") == 0);
+        outbox_callee::StreamGetline(&in, line, sizeof(line), '\n');
+        CHECK(std::strcmp(line, "subject") == 0 && in.ios->mState == 0);
+        outbox_callee::StreamDestroy(&in);
+        // A mail neither folder has fails to open, and reading makes no folder for it.
+        outbox_callee::StreamCtor(&in);
+        CHECK(!outbox_callee::StreamOpen(&in, "TPW:Theme Park Data:save:users:U5L48:outbox:00000004.dat") && in.filebufOpen == 0);
+        outbox_callee::StreamDestroy(&in);
+        CHECK(!fs::exists(config.userDir / "save" / "users" / "U5L48"));
+        CHECK(!fs::exists(kMail));
+    }
 
     // Listing more than one entry, then files and folders coming and going.
     _WIN32_FIND_DATAA found;
@@ -1641,6 +1695,64 @@ static void TestWideScreen() {
     CheckFit(2056, 1290, 2.0, 2730, 1536, 2056, 1156, 2056.0 * 2.0 / 2730.0);
     CheckFit(2056, 1290, 2.0, 2458, 1536, 2019, 1262, 2019.0 * 2.0 / 2458.0);   // 16:10 fills the height
 }
+
+// ---- The widescreen picks (include/UI_Base.h, unit v5L51) ------------------------------------------------------------
+// The 3D view (CMatrix::Projection and Matrix_Init's x scale of height over width) puts a point x / z across at pixel
+// (1 + 2 (H / W) x / (z tan(fov / 2))) W / 2: it keeps the height's angle and widens. The pointer's ray
+// (CalculatePointerWorldPosn) leaves the camera at x / z = 0.8 tan(0.885 fov / 2) (2 px / W - 1), its corners' 4:3
+// reach, times UI_PickAcrossScale on a wider screen. Here the two are compared across the screen: the ray must point at
+// the pixel under the pointer. The frames of 16:9 and 4:3 runs are the proof of the rest.
+static double PickAcrossPixel(int32_t wide, int32_t high, double px, bool scaled) {
+    const double fov = 1.5707963705062866;   // gCameraFov: InitCamera's 90 degrees
+    const float centreX = static_cast<float>(static_cast<uint32_t>(wide)) * 0.5f;   // gViewCentreX (src/TPConfig.cpp)
+    const float centreY = static_cast<float>(static_cast<uint32_t>(high)) * 0.5f;
+    const double k = scaled ? UI_PickAcrossScale(centreX, centreY) : 1.0;
+    const double sx = px / (2.0 * centreX);
+    const double across = 0.8 * std::tan(fov * 0.5 * 0.885) * k * (2.0 * sx - 1.0);   // x / z of the ray
+    return (1.0 + 2.0 * (static_cast<double>(high) / wide) * across / std::tan(fov * 0.5)) * wide * 0.5;
+}
+
+static void TestWidePick() {
+    // 1 on a 4:3 view, so the original's ray is kept there; 4/3 at 16:9, 6/5 at 16:10.
+    CHECK(UI_PickAcrossScale(2048.0f, 1536.0f) == 1.0f);
+    CHECK(UI_PickAcrossScale(320.0f, 240.0f) == 1.0f);
+    CHECK(std::fabs(UI_PickAcrossScale(1920.0f, 1080.0f) - 4.0f / 3.0f) < 1e-6f);
+    CHECK(std::fabs(UI_PickAcrossScale(1280.0f, 800.0f) - 1.2f) < 1e-6f);
+    const int32_t sizes[][2] = {{4096, 3072}, {1024, 768}, {3840, 2160}, {2730, 1536}, {1366, 768}, {2560, 1600}, {3840, 2400}};
+    for (const auto& size : sizes) {
+        const int32_t wide = size[0];
+        const int32_t high = size[1];
+        for (int32_t step = 0; step <= 64; ++step) {
+            const double px = (wide - 1) * step / 64.0;
+            // The ray hits the pixel under the pointer to within a thousandth of the screen: the Mac's own reach on its
+            // 4:3 screen, where 0.8 tan(0.885 x 45 degrees) is 0.6671 for the 2/3 the view spans (1.4 pixels at 4096).
+            CHECK(std::fabs(PickAcrossPixel(wide, high, px, true) - px) < wide * 0.001);
+        }
+        if (wide * 3 > high * 4) {
+            // Without the scale the ray at the screen's edge points an eighth of the screen in from it at 16:9 (the bug).
+            CHECK(std::fabs(PickAcrossPixel(wide, high, 0.0, false)) > wide * 0.08);
+        }
+    }
+
+    // The hot sprite test's pointer x: the Mac's x / 1024 - 1, to the bit, on a 4:3 screen.
+    for (int32_t x = -32768; x <= 32767; ++x) {
+        const float mac = static_cast<float>(static_cast<int16_t>(x)) * 0.0009765625f - 1.0f;
+        const float port = UI_UnitToViewX(static_cast<int16_t>(x), 0x800);
+        CHECK(std::memcmp(&mac, &port, 4) == 0);
+    }
+    // On a wider screen -1 at the left edge, 0 in the middle and 1 at the right, as the projected view has it: the
+    // pointer's units (Will_HandleCameraMessages: units x 4:3 box width / 2048 pixels) at the view's -1..1 to within 0.001.
+    for (const auto& size : sizes) {
+        const int32_t wide = size[0];
+        const int32_t high = size[1];
+        const int16_t units = UI_UnitWidthFor(wide, high);
+        const int32_t box = wide * 3 > high * 4 ? UI_PillarboxWidth(high) : wide;
+        for (int32_t x = 0; x < units; x += 7) {
+            const double pixel = static_cast<double>(x * box / 2048);
+            CHECK(std::fabs(UI_UnitToViewX(static_cast<int16_t>(x), units) - (2.0 * pixel / wide - 1.0)) < 0.002);
+        }
+    }
+}
 #endif
 
 #ifdef TPW_PORT_FIX
@@ -2479,6 +2591,7 @@ int main() {
     TestFitMouse();
 #ifdef TPW_PORT_FIX
     TestWideScreen();
+    TestWidePick();
     TestFontScale();
 #endif
     TestSound(scratch);

@@ -232,6 +232,13 @@ inline int16_t UI_WideAnchor(int32_t left, int32_t right, int32_t unitWidth) {
     if (middle > 0x800 * 2 / 3) return static_cast<int16_t>(extra);
     return static_cast<int16_t>(extra / 2);
 }
+// TPW_PORT_FIX v5L51 CalculatePointerWorldPosn | Mac: the pointer's ray spans a 4:3 view (the corners' atan(0.75)) | Port: its across reach is scaled by how much wider than 4:3 the view is | Why: the 3D view keeps its height's angle and widens with the screen (Matrix_Init scales x by height over width), so on a 16:9 screen the 4:3 ray picked a block nearer the middle than the one under the pointer, more so towards the edges
+// The scale for a view centreX by centreY pixels (gViewCentreX, gViewCentreY): 1 on a 4:3 view, 4/3 at 16:9.
+inline float UI_PickAcrossScale(float centreX, float centreY) { return 0.75f * centreX / centreY; }
+// TPW_PORT_FIX v5L51 LLCC_SystemGetPointedPeepThing | Mac: the pointer's x in the projected view's -1..1 is x / 1024 - 1 | Port: x over half the unit space, less 1 (the same bits on a 4:3 screen) | Why: on a wider screen x / 1024 - 1 runs past 1, so the hot sprite test looked for the guest or staff member at the wrong place on the screen
+inline float UI_UnitToViewX(int16_t x, int32_t unitWidth) {
+    return static_cast<float>(x) * (2.0f / static_cast<float>(unitWidth)) - 1.0f;
+}
 extern InterfaceWindow* gUIRootWindow; // 0x10395c24
 extern int32_t gUIActive;              // 0x102af924, starts at 1
 extern int16_t gUIButtonFlags;         // 0x10395bbe, cleared on deactivation

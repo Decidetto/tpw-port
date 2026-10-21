@@ -10,7 +10,7 @@ adds what it takes to play:
   translated yet;
 - platform/: the platform layer, the Mac Toolbox, Sound Sprockets, QuickTime and the game's Windows-style shims done on
   SDL3, OpenGL and CoreText;
-- overrides/: the port's fixes, 42 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what the port does
+- overrides/: the port's fixes, 51 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what the port does
   and why. Each file there is built in place of the tpw-decomp file of the same path; the rest of tpw-decomp is built as
   it is. The headers are read from a copy of tpw-decomp's headers in the build folder with the overridden ones laid over
   it, so every file of both repositories sees the port's version of a header.

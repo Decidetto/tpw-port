@@ -266,4 +266,9 @@ int32_t ReadFileReference(int32_t reference, uint32_t offset, void* buffer, uint
 
 std::string GamePathForWriting(const char* gamePath) { return HostPathForWriting(gamePath).string(); }
 
+std::string GamePathForReading(const char* gamePath) {
+    const fs::path host = FindHostPath(gamePath);
+    return host.empty() ? std::string(gamePath) : host.string();
+}
+
 }  // namespace tpw
