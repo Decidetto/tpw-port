@@ -150,6 +150,11 @@ std::vector<DirEntry> ListGameFolder(const std::string& gamePath) {
     return entries;
 }
 
+std::string EditionOf(const fs::path& gameDir) {
+    const fs::path language = FindUnder(gameDir, {"data", "Language"});
+    return !language.empty() && !FindChild(language, "American").empty() ? "stp" : "tpw";
+}
+
 }  // namespace tpw
 
 // ---- The application's folder (UProcess, UFolder) --------------------------------------

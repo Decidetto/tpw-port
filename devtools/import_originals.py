@@ -11,6 +11,8 @@ The originals are found in DOWNLOADS (searched with its subfolders) by their siz
   patch  the SimTheme Park 2.04b3 patch (a self-extracting StuffIt archive, .sea.sit), MD5 23bcbf4d6d6aec0b5ab00d47840b3f63
   bonus  optional: Theme Park World Bonus Stuff (a zip; its TrueType fonts serve only the platform tests),
          MD5 1adeba0b0cf5edcc623d44181a321f28
+  eur    optional: the Theme Park World UK/European PC CD, an ISO image of either pressing (for tpw --eur),
+         MD5 df7d864394ad46860984be60f2a3e448 or 50ffee97f9abc37e751f36d7239caea4
 
 and unpacked into WORK/extracted as
 
@@ -22,6 +24,8 @@ and unpacked into WORK/extracted as
                                                  its data tables from) and its libraries, data forks only
   Theme_Park_World_Bonus_Stuff/Theme Park World Bonus Stuff/tpwfnt/
                                                  the bonus fonts, when the bonus zip is there
+  tpw-eur/Theme Park Data/                       the Theme Park World edition's game folder, when the UK ISO is there
+                                                 (written by devtools/import_eur.py, which says what it holds)
 
 which is where the build (TPW_GAME_PROGRAM's default, WORK/tpw-port/../extracted/...) and the launcher
 (--game "extracted/disc-hfs/Theme Park Data", from WORK) look. Every file written is then checked against the SHA-256
@@ -44,6 +48,12 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+import importlib.util
+
+_spec = importlib.util.spec_from_file_location("import_eur", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                                          "import_eur.py"))
+import_eur = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(import_eur)
 
 ORIGINALS = [
     # (key, MD5, size, description, required)
@@ -53,7 +63,7 @@ ORIGINALS = [
      "the SimTheme Park Mac 2.04b3 patch (a .sea.sit)", True),
     ("bonus", "1adeba0b0cf5edcc623d44181a321f28", 6687662,
      "Theme Park World Bonus Stuff (a zip; optional, its fonts serve only the platform tests)", False),
-]
+] + import_eur.EUR_ISOS
 
 DISC = "disc-hfs"
 GAME_FOLDER = "Theme Park Data"
@@ -80,9 +90,10 @@ def md5_of(path):
 
 
 def find_originals(root):
-    """{key: path} of the originals in ROOT and its subfolders. Only files of an original's size are hashed."""
-    by_size = {size: (key, md5) for key, md5, size, _, _ in ORIGINALS}
-    found, damaged = {}, []
+    """{key: path} of the originals in ROOT and its subfolders. Only files of an original's size are hashed. A key
+    with more than one original (the UK ISO's two pressings) takes the first of them in ORIGINALS that is there."""
+    by_size = {size: (key, md5, rank) for rank, (key, md5, size, _, _) in enumerate(ORIGINALS)}
+    found, rank_of, damaged = {}, {}, []
     for folder, dirs, files in os.walk(root):
         dirs.sort()
         for name in sorted(files):
@@ -91,17 +102,17 @@ def find_originals(root):
                 size = os.path.getsize(path)
             except OSError:
                 continue
-            if size not in by_size or by_size[size][0] in found:
+            if size not in by_size or rank_of.get(by_size[size][0], len(ORIGINALS)) <= by_size[size][2]:
                 continue
-            key, md5 = by_size[size]
+            key, md5, rank = by_size[size]
             if md5_of(path) == md5:
-                found[key] = path
+                found[key], rank_of[key] = path, rank
             else:
                 damaged.append(path)
-    for key, md5, size, what, required in ORIGINALS:
-        if key in found:
+    for rank, (key, md5, size, what, required) in enumerate(ORIGINALS):
+        if rank_of.get(key) == rank:
             print("found %-5s %s: %s" % (key, md5, found[key]))
-        else:
+        elif key not in found:
             print("%s %-5s %s (%d bytes): %s" % ("MISSING" if required else "missing", key, md5, size, what))
     for path in damaged:
         print("  %s has an original's size but not its MD5 (a damaged download?)" % path)
@@ -334,6 +345,17 @@ def check(top, groups):
     return True
 
 
+def check_eur(top):
+    bad = import_eur.check(os.path.join(top, import_eur.EDITION, import_eur.GAME_FOLDER))
+    if bad:
+        print("CHECK FAILED: %d files (%s):" % (len(bad), import_eur.EDITION))
+        for b in bad[:60]:
+            print("  " + b)
+        return False
+    print("CHECK OK: %s matches its list" % import_eur.EDITION)
+    return True
+
+
 def make_list(top):
     """Print the CHECKSUMS text of a known-good layout TOP (the folders above, all of the disc)."""
     lines = []
@@ -365,7 +387,10 @@ def main(argv):
         return 0
     if a.check:
         groups, _ = groups_of(a.whole_disc, os.path.isdir(os.path.join(a.check, tree_root("bonus"))))
-        return 0 if check(a.check, groups) else 1
+        ok = check(a.check, groups)
+        if os.path.isdir(os.path.join(a.check, import_eur.EDITION)):
+            ok = check_eur(a.check) and ok
+        return 0 if ok else 1
     if not a.src or not a.to:
         ap.error("--from and --to are needed (or --check DIR)")
     if not os.path.isdir(a.src):
@@ -376,7 +401,8 @@ def main(argv):
         fail("cannot go on without: %s (see the MISSING lines above)" % ", ".join(missing))
     groups, targets = groups_of(a.whole_disc, "bonus" in found)
     os.makedirs(a.to, exist_ok=True)
-    there = [t for t in targets if os.path.lexists(os.path.join(a.to, t))]
+    there = [t for t in targets + ([import_eur.EDITION] if "eur" in found else [])
+             if os.path.lexists(os.path.join(a.to, t))]
     if there and not a.replace:
         fail("already there (give --replace to rewrite them): " + ", ".join(os.path.join(a.to, t) for t in there))
     stage = tempfile.mkdtemp(prefix=".import_originals-", dir=a.to)
@@ -394,9 +420,17 @@ def main(argv):
     finally:
         shutil.rmtree(stage, ignore_errors=True)
     ok = check(a.to, groups)
+    if ok and "eur" in found:
+        try:
+            import_eur.build_eur(found["eur"], a.to, replace=a.replace)
+        except import_eur.EurImportError as e:
+            fail("the UK ISO: %s" % e)
+        ok = check_eur(a.to)
     if ok:
         print("Done. From the folder holding tpw-port and extracted: cmake -S tpw-port -B build, then\n"
               "build/tpw_launcher --game \"extracted/%s/%s\"" % (DISC, GAME_FOLDER))
+        if "eur" in found:
+            print("Theme Park World: build/tpw_launcher --game \"extracted/%s/%s\"" % (import_eur.EDITION, GAME_FOLDER))
     return 0 if ok else 1
 
 

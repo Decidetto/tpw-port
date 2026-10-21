@@ -12,7 +12,8 @@ adds what it takes to play:
   SDL3, OpenGL and CoreText;
 - overrides/: the port's fixes, 33 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what the port does
   and why. Each file there is built in place of the tpw-decomp file of the same path; the rest of tpw-decomp is built as
-  it is.
+  it is. The headers are read from a copy of tpw-decomp's headers in the build folder with the overridden ones laid over
+  it, so every file of both repositories sees the port's version of a header.
 
 ## Nothing from the game
 
@@ -29,6 +30,7 @@ names), unpacks them and checks every file it writes against the SHA-256 list it
 | From the US Mac CD (SimThemePark Mac US CD v2.0.1): the zip holding the CD image "Theme Park.toast" | f03abce3f375bc72d863cc527749e645 |
 | From the patches item (SimThemePark Mac Patches and Updaters): the 2.04b3 patch, a .sea.sit | 23bcbf4d6d6aec0b5ab00d47840b3f63 |
 | From the demo and bonus item (ThemeParkWorld Mac Demo and Bonus Stuff): the Bonus Stuff zip; optional, its fonts serve only the platform tests | 1adeba0b0cf5edcc623d44181a321f28 |
+| From the UK PC CD item (ThemeParkWorld PC UK-European CD Bullfrog EA): either ISO image; optional, for the Theme Park World edition (devtools/import_eur.py writes extracted/tpw-eur) | df7d864394ad46860984be60f2a3e448 or 50ffee97f9abc37e751f36d7239caea4 |
 
 It needs machfs, from pip, for the CD's HFS volume and unar for the StuffIt archive (macOS: `brew install unar`; Debian
 and Ubuntu: `apt install unar`). Put the downloads in one folder, then from WORK, the folder holding tpw-port:

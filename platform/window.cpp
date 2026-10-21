@@ -140,6 +140,11 @@ namespace tpw {
 
 Window* MainWindow() { return gWindowMade ? &gWindow : nullptr; }
 
+std::string WindowTitle(const std::string& edition, const unsigned char* title) {
+    if (edition == "stp") return "SimTheme Park";
+    return std::string(reinterpret_cast<const char*>(title + 1), title[0]);
+}
+
 void WindowOrigin(int32_t& x, int32_t& y) {
     x = y = 0;
     if (gWindowMade) {
@@ -410,7 +415,8 @@ GrafPort* NewCWindow(void*, const Rect* bounds, const unsigned char* title, bool
     if (!StartVideo()) return nullptr;
     const int32_t width = bounds->right - bounds->left;
     const int32_t height = bounds->bottom - bounds->top;
-    const std::string name(reinterpret_cast<const char*>(title + 1), title[0]);
+    const std::string edition = tpw::config().edition.empty() ? tpw::EditionOf(tpw::config().gameDir) : tpw::config().edition;
+    const std::string name = tpw::WindowTitle(edition, title);
 
     // A legacy (compatibility) context: the engine draws with OpenGL 1.1 calls.
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);

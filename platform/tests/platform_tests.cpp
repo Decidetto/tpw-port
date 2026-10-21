@@ -138,6 +138,23 @@ static void TestPaths(const fs::path& scratch) {
 // The std::ifstream shims of SwearFilter::LoadWordList (platform/msl_ifstream.cpp): a word file as
 // the disc ships it (UTF-16 little-endian, XORed, CR LF) comes back as big-endian halfwords, the
 // stream ends with eofbit and failbit, and a missing file or a second open answers NULL.
+// The edition by the game folder's Language (as the US and UK discs lay it out, in any case) and the window's title.
+static void TestEdition(const fs::path& scratch) {
+    Touch(scratch / "stp" / "data" / "Language" / "American" / "strings.str");
+    Touch(scratch / "tpw" / "Data" / "language" / "English" / "strings.str");
+    Touch(scratch / "both" / "data" / "Language" / "english" / "strings.str");
+    Touch(scratch / "both" / "data" / "Language" / "AMERICAN" / "strings.str");
+    fs::create_directories(scratch / "none" / "data");
+    CHECK(tpw::EditionOf(scratch / "stp") == "stp");
+    CHECK(tpw::EditionOf(scratch / "tpw") == "tpw");
+    CHECK(tpw::EditionOf(scratch / "both") == "stp");
+    CHECK(tpw::EditionOf(scratch / "none") == "tpw");
+    CHECK(tpw::EditionOf(scratch / "missing") == "tpw");
+    const unsigned char title[] = "\x10" "Theme Park World";
+    CHECK(tpw::WindowTitle("stp", title) == "SimTheme Park");
+    CHECK(tpw::WindowTitle("tpw", title) == "Theme Park World");
+}
+
 static void TestSwearStreams() {
     tpw::Config& config = tpw::config();
     const fs::path file = config.gameDir / "data" / "Language" / "American" / "swears.txt";
@@ -2324,6 +2341,7 @@ int main() {
     fs::remove_all(scratch, stale);
     fs::create_directories(scratch);
     TestPaths(scratch);
+    TestEdition(scratch / "edition");
     TestSwearStreams();
     TestMslRuntime();
     TestCvtGlue();

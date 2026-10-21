@@ -147,7 +147,11 @@ void Usage(const char* program) {
                  "usage: %s [options]\n"
                  "  --game DIR     the installed game: the folder that holds \"data\"\n"
                  "                 (default: $TPW_GAME_DIR, else \"Theme Park Data\" here)\n"
-                 "  --user DIR     where saves and settings go (default: a per-user folder)\n"
+                 "  --user DIR     where saves and settings go (default: a per-user folder, one for each edition)\n"
+                 "  --edition E    the edition the game folder holds: stp, SimTheme Park (the US Mac disc), or tpw, Theme\n"
+                 "                 Park World (the UK/European disc, from devtools/import_eur.py); the window's title\n"
+                 "                 follows it (default: told by the folder's data:Language, American being stp)\n"
+                 "  --eur, --stp   the same as --edition tpw, --edition stp\n"
                  "  --windowed     run in a window instead of full screen\n"
                  "  --resolution WxH  the game's resolution, named by its 4:3 size: a Resolution.sam preset (512x384,\n"
                  "                    640x480, 800x600, 1024x768, 1280x1024, 1600x1200, 2048x1536) or a larger one of the\n"
@@ -231,6 +235,15 @@ int main(int argc, char** argv) {
         };
         if (arg == "--game") config.gameDir = value();
         else if (arg == "--user") config.userDir = value();
+        else if (arg == "--edition") {
+            config.edition = value();
+            if (config.edition != "stp" && config.edition != "tpw") {
+                std::fprintf(stderr, "launcher: --edition wants stp or tpw: %s\n", config.edition.c_str());
+                return 2;
+            }
+        }
+        else if (arg == "--eur") config.edition = "tpw";
+        else if (arg == "--stp") config.edition = "stp";
         else if (arg == "--windowed") config.debugOptions[1] = 0;
         else if (arg == "--resolution") {
             const char* size = value();
@@ -316,8 +329,10 @@ int main(int argc, char** argv) {
                      config.gameDir.string().c_str());
         return 1;
     }
+    if (config.edition.empty()) config.edition = tpw::EditionOf(config.gameDir);
     if (config.userDir.empty()) {
-        if (char* pref = SDL_GetPrefPath("tpw-decomp", "Theme Park World")) {
+        // the two editions keep apart: their saves hold text in their own language
+        if (char* pref = SDL_GetPrefPath("tpw-decomp", config.edition == "stp" ? "Theme Park World" : "Theme Park World UK")) {
             config.userDir = pref;
             SDL_free(pref);
         } else {
@@ -326,6 +341,7 @@ int main(int argc, char** argv) {
     }
     std::filesystem::create_directories(config.userDir, ec);
     tpw::Log("game folder: %s", config.gameDir.string().c_str());
+    tpw::Log("edition: %s", config.edition == "stp" ? "SimTheme Park (stp)" : "Theme Park World (tpw)");
     tpw::Log("user folder: %s", config.userDir.string().c_str());
 
     // 4:3 leaves the game's own sizes alone (the 1280 x 1024 preset stays 5:4); anything wider widens the screen.
