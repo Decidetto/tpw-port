@@ -926,6 +926,16 @@ static void TestArena() {
     Record copy = *first;         // records can be copied as bytes
     CHECK(copy.mNext == second);
     tpw::ArenaFree(file);
+
+    // The live bytes follow the blocks, and a block made again after a free reuses the range (the high-water mark stays).
+    const size_t live = tpw::ArenaLiveBytes();
+    void* probe = tpw::ArenaAlloc(100);
+    const size_t top = tpw::ArenaHighWater();
+    CHECK(tpw::ArenaLiveBytes() == live + 100 && top > tpw::ArenaOffset(probe));
+    tpw::ArenaFree(probe);
+    CHECK(tpw::ArenaLiveBytes() == live);
+    CHECK(tpw::ArenaAlloc(100) == probe && tpw::ArenaHighWater() == top && tpw::ArenaLiveBytes() == live + 100);
+    tpw::ArenaFree(probe);
 }
 
 // ---- GDI text (platform/gdi.cpp) ---------------------------------------------------------

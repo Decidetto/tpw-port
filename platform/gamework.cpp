@@ -240,7 +240,10 @@ void UGamework::Run() {
             if (pass < typing.pass || index >= static_cast<int32_t>(typing.text.size())) continue;
             const char character = typing.text[static_cast<size_t>(index)];
             const bool down = (pass - typing.pass) % 2 == 0;
-            const int32_t windowsKey = character == '\r' ? 0x0d : std::toupper(static_cast<unsigned char>(character));
+            // Letters, digits and space are their own virtual keys; other punctuation is no key, only the character (as '@' always
+            // was): its code is a navigation key's ('.' is 0x2e, VK_DELETE, which the edit boxes took as forward delete).
+            const unsigned char code = static_cast<unsigned char>(character);
+            const int32_t windowsKey = character == '\r' ? 0x0d : std::isalnum(code) || character == ' ' ? std::toupper(code) : 0;
             const char macKey = static_cast<char>(tpw::MacKeyCodeFromScancode(
                 static_cast<SDL_Scancode>(tpw::ScancodeFromWindowsKey(windowsKey))));
             const uint32_t modifiers = std::isupper(static_cast<unsigned char>(character)) ? 0x200u : 0u;
