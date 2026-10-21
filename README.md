@@ -17,14 +17,39 @@ adds what it takes to play:
 ## Nothing from the game
 
 Neither repository holds any part of the game. You need your own copy: the 2.04b3 patch's "SimTheme Park" application
-(the build reads six data tables from it) and the CD's "Theme Park Data" folder, which the game reads at run time. See
-tpw-decomp's README for the folder layout and devtools/hfsdump.py, which unpacks the CD's HFS partition.
+(the build reads six data tables from it) and the CD's "Theme Park Data" folder, which the game reads at run time.
+
+## Game data
+
+The port runs from the original downloads, unchanged. devtools/import_originals.py finds them by their MD5 (any file
+names), unpacks them and checks every file it writes against the SHA-256 list it carries:
+
+| Original | MD5 |
+| --- | --- |
+| From the US Mac CD (SimThemePark Mac US CD v2.0.1): the zip holding the CD image "Theme Park.toast" | f03abce3f375bc72d863cc527749e645 |
+| From the patches item (SimThemePark Mac Patches and Updaters): the 2.04b3 patch, a .sea.sit | 23bcbf4d6d6aec0b5ab00d47840b3f63 |
+| From the demo and bonus item (ThemeParkWorld Mac Demo and Bonus Stuff): the Bonus Stuff zip; optional, its fonts serve only the platform tests | 1adeba0b0cf5edcc623d44181a321f28 |
+
+It needs machfs, from pip, for the CD's HFS volume and unar for the StuffIt archive (macOS: `brew install unar`; Debian
+and Ubuntu: `apt install unar`). Put the downloads in one folder, then from WORK, the folder holding tpw-port:
+
+    python3 -m venv venv
+    venv/bin/python -m pip install machfs
+    venv/bin/python tpw-port/devtools/import_originals.py --from DOWNLOADS --to extracted
+
+It takes about half a minute and 2 GB of memory, writes nothing outside extracted/ and ends with "CHECK OK" (or the list
+of the files that differ). `--check extracted` checks the folders again later; `--whole-disc` also writes the rest of the
+CD (manuals, installers, extras), which nothing reads. The result:
 
     WORK/
       tpw-port/                        this repository (tpw-port/tpw-decomp is the submodule)
       extracted/
         SimTPPatch_204b3/Sim Theme Park Patch/patch 2.04b3/SimTheme Park
-        disc-hfs/Theme Park Data/
+        disc-hfs/Theme Park Data/      each file's data fork, with NAME.rsrc (its resource fork) and NAME.finfo
+        Theme_Park_World_Bonus_Stuff/  the bonus fonts, when that zip is there
+
+The build finds the program there by default (TPW_GAME_PROGRAM names another), and from WORK the game runs with
+`build/tpw_launcher --game "extracted/disc-hfs/Theme Park Data"` (or devtools/run_launcher.sh, below).
 
 ## Building
 
