@@ -56,7 +56,7 @@ const char* EditionTitle(assets::Edition edition) {
 
 const char* EditionGame(assets::Edition edition) {
     switch (edition) {
-        case assets::kEditionUs: return "SimTheme Park, Mac CD";
+        case assets::kEditionUs: return "Sim Theme Park, Mac CD";
         case assets::kEditionEur: return "Theme Park World, PC CD";
         case assets::kEditionGold: return "PC Gold bonus CD";
     }

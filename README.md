@@ -1,6 +1,6 @@
 # tpw-port
 
-A native port of Theme Park World (Sim Theme Park), built on the [tpw-decomp](https://gitlab.com/tpw-decomp/tpw-decomp) translation of the
+A native port of Sim Theme Park (AKA Theme Park World), built on the [tpw-decomp](https://gitlab.com/tpw-decomp/tpw-decomp) translation of the
 1999 Mac build. It runs on macOS and uses OpenGL (part of macOS).
 
 tpw-decomp is the reference: the game's own functions, each behaving exactly as on the Mac, bugs included. This repository
@@ -28,8 +28,8 @@ one and logs "not wired up yet (does nothing): <name>" the first time it is reac
 Neither repository holds any part of the game. You need your own copy. The US edition needs only the Mac CD zip: the
 launcher reads its data tables from the CD's "SimTheme Park" program and the game reads the CD's "Theme Park Data" folder
 at run time. The European edition needs the PC image and the Mac CD zip as well: the data tables come from the Mac
-program, and the PC disc cannot supply them. Not affiliated with or endorsed by Electronic Arts. Theme Park World and
-SimTheme Park are trademarks of their respective owners. No game content is included; you need your own discs.
+program, and the PC disc cannot supply them. Not affiliated with or endorsed by Electronic Arts. Sim Theme Park and
+Theme Park World are trademarks of their respective owners. No game content is included; you need your own discs.
 
 ## Game data
 

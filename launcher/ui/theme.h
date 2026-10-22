@@ -15,10 +15,10 @@ inline constexpr const char* kProductName = "STP/TPW Launcher";
 inline constexpr const char* kDataFolderName = "STP-TPW Launcher";
 // How the games are mentioned: descriptively, never as a logo (launcher-design section 5, "Trademark naming").
 inline constexpr const char* kTagline =
-    "An unofficial port for playing your own copy of Theme Park World (PC) and SimTheme Park (Mac).";
+    "An unofficial port for playing your own copy of Sim Theme Park (Mac) and Theme Park World (PC).";
 // Shown on the first screen and in the About box, word for word.
 inline constexpr const char* kDisclaimer =
-    "Not affiliated with or endorsed by Electronic Arts. Theme Park World and SimTheme Park are trademarks of their "
+    "Not affiliated with or endorsed by Electronic Arts. Sim Theme Park and Theme Park World are trademarks of their "
     "respective owners. No game content is included; you need your own discs.";
 
 struct Rgba {

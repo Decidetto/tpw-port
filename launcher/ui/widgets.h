@@ -35,7 +35,7 @@ enum class Badge { None, Lock, Partial, Check };
 // What an edition tile shows (texts.h writes the words).
 struct TileView {
     std::string title;      // "European edition"
-    std::string game;       // "Theme Park World, PC CD"
+    std::string game;       // "Sim Theme Park, Mac CD", "Theme Park World, PC CD"
     std::string state;      // "Ready to play", "715 of 845 confirmed", ...
     std::string detail;     // "Drag in the US Mac CD to unlock", ...
     Rgba accent;            // the tile's header band

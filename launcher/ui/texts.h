@@ -22,7 +22,7 @@ inline constexpr assets::Edition kEditions[3] = {assets::kEditionUs, assets::kEd
 int EditionIndex(assets::Edition edition);   // 0, 1, 2
 
 const char* EditionTitle(assets::Edition edition);   // "US edition", "European edition", "Gold bonus rides"
-const char* EditionGame(assets::Edition edition);    // "SimTheme Park, Mac CD", "Theme Park World, PC CD", ...
+const char* EditionGame(assets::Edition edition);    // "Sim Theme Park, Mac CD", "Theme Park World, PC CD", ...
 
 // The discs an edition still needs, from its missing counts: "the European PC CD and the US Mac CD". Empty when none.
 std::string DiscsNeeded(const assets::EditionStatus& status);
