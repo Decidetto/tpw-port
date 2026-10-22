@@ -1,40 +1,86 @@
 # tpw-port
 
-A native port of Sim Theme Park (AKA Theme Park World), built on the [tpw-decomp](https://gitlab.com/tpw-decomp/tpw-decomp) translation of the
-1999 Mac build. It runs on macOS and uses OpenGL (part of macOS).
+An unofficial port of Sim Theme Park (AKA Theme Park World, 1999) for Apple Silicon Macs. You need your own copy of the
+game. Nothing from the game is in here.
 
-tpw-decomp is the reference: the game's own functions, each behaving exactly as on the Mac, bugs included. This repository
-adds what it takes to play:
+Not affiliated with or endorsed by Electronic Arts. Sim Theme Park and Theme Park World are trademarks of their
+respective owners.
 
-- launcher/: the program (window, options, the game's start-up sequence) and the generated stand-ins for the names the
-  code calls that nothing defines yet;
-- platform/: the platform layer, the Mac Toolbox, Sound Sprockets, QuickTime and the game's Windows-style shims done on
-  SDL3 (built from source in third_party/SDL3), OpenGL and CoreText;
-- overrides/: the port's fixes, 53 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what the port does
-  and why. Each file there is built in place of the tpw-decomp file of the same path; the rest of tpw-decomp is built as
-  it is. The headers are read from a copy of tpw-decomp's headers in the build folder with the overridden ones laid over
-  it, so every file of both repositories sees the port's version of a header.
+## Quick start
+
+macOS on Apple Silicon only. In Terminal:
+
+    git clone --recurse-submodules https://gitlab.com/tpw-decomp/tpw-port.git
+    cd tpw-port && make
+    make run
+
+If macOS asks to install the command line developer tools, click Install, wait, then run the first line again. The first
+build takes a few minutes. If your Mac has no CMake, `make` fetches it into the build
+folder. Nothing else is installed.
+
+`make run` opens the launcher. Drop your game disc on its window: the Mac CD, the PC CD, or a zip or disc image of
+either. The launcher checks every file and ticks off the editions it finds. Press Play.
+
+## What you need
+
+- A Mac with Apple Silicon (M1 or later) and about 2.5 GB of free space.
+- Your own copy of the game:
+  - The US Mac CD gives Sim Theme Park.
+  - The Mac CD plus the European PC CD give Theme Park World too. Only the 2000 pressings of the PC CD work (Redump
+    66484 and 9465), and the 1999 pressing (Redump 66100) is refused.
+  - The PC Gold bonus CD unlocks the Gold bonus rides in the launcher. This build does not add them to the game yet.
+- No patches. The port is built from the last Mac patch (2.04b3) and reads only the game's data files.
+
+Your checked game files and your saves live in `~/Library/Application Support/STP-TPW Launcher`. `make clean` never
+touches that folder.
 
 ## Where it stands
 
-Every function of the game is translated (tpw-decomp is at 100% of functions), and the port plays from the lobby into a
-park in both editions. Not everything is connected yet: a few hundred names the translated code calls (mostly per-file
-call shims, the online library and some platform calls) have no definition in the port. The launcher stands in for each
-one and logs "not wired up yet (does nothing): <name>" the first time it is reached; a platform call logs
-"unimplemented platform call: <name>". The online features (the lobby's globe) do not work yet.
+Every function of the game is translated. Both editions play from the lobby into a park. 158 names are still generated
+stand-ins. All of them belong to EA's online service, which is gone (the lobby's globe), or to the Mac Sound Manager's
+channel layer. None of them is reached in play.
 
-## Nothing from the game
+Known problem: clicking the globe in the lobby crashes the game.
 
-Neither repository holds any part of the game. You need your own copy. The US edition needs only the Mac CD zip: the
-launcher reads its data tables from the CD's "SimTheme Park" program and the game reads the CD's "Theme Park Data" folder
-at run time. The European edition needs the PC image and the Mac CD zip as well: the data tables come from the Mac
-program, and the PC disc cannot supply them. Not affiliated with or endorsed by Electronic Arts. Sim Theme Park and
-Theme Park World are trademarks of their respective owners. No game content is included; you need your own discs.
+## For developers
 
-## Game data
+### The code
 
-The port runs from the original downloads, unchanged. devtools/import_originals.py finds them by their MD5 (any file
-names), unpacks them and checks every file it writes against the SHA-256 list it carries:
+The translation is the [tpw-decomp](https://gitlab.com/tpw-decomp/tpw-decomp) submodule: the game's own functions, each behaving exactly as
+on the Mac, bugs included. This repository adds what it takes to play:
+
+- launcher/: the program (the launcher's window, the options, the game's start-up) and the generated stand-ins for the
+  names nothing defines yet.
+- platform/: the Mac Toolbox, Sound Sprockets, QuickTime and the game's Windows-style shims, done on SDL3, OpenGL and
+  CoreText.
+- overrides/: the port's fixes, 53 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what
+  the port does and why. Each file there is built in place of the tpw-decomp file of the same path. Headers are read
+  from a copy of tpw-decomp's headers in the build folder with the overridden ones laid over it.
+
+### Building by hand
+
+`make` takes BUILD=, CMAKE= and JOBS= (the Makefile's header says how). `make clean` deletes build/, with the CMake it
+fetched. To run the steps yourself you need CMake 3.20 or newer, a C++17 compiler and Python 3. SDL3, zlib, libjpeg and
+a trimmed FFmpeg are built from source with the port (third_party/).
+
+    git clone --recurse-submodules https://gitlab.com/tpw-decomp/tpw-port.git
+    cd tpw-port
+    cmake -S . -B build
+    cmake --build build -j8 --target tpw_launcher
+
+-DTPW_MOVIES=OFF builds without the films. The launcher reads the game's data tables at run time from the game folder's
+"SimTheme Park" program (or the one --program names), so the build holds none of them. -DTPW_TABLES_AT_CONFIGURE=ON
+compiles them in at configure time instead, from -DTPW_GAME_PROGRAM=<path> (default: the CD's program in the
+extracted/ folder beside tpw-port, below).
+
+The submodule's URL is relative (../tpw-decomp), so it resolves to tpw-decomp beside tpw-port, on the same server or in
+the same folder. A clone of a local folder needs `git -c protocol.file.allow=always submodule update --init`.
+
+### Game data from the command line
+
+The launcher's window is the easy way. devtools/import_originals.py does the same from the command line. It finds the
+originals by their MD5 (any file names), unpacks them and checks every file it writes against the SHA-256 list it
+carries:
 
 | Original | MD5 |
 | --- | --- |
@@ -43,21 +89,13 @@ names), unpacks them and checks every file it writes against the SHA-256 list it
 | From the UK PC CD item (ThemeParkWorld PC UK-European CD Bullfrog EA): Redump 66484, ThemeParkWorld.img; optional, for the European (Theme Park World) edition, with the Mac CD zip (devtools/import_eur.py writes extracted/tpw-eur) | cd1cc4c33c1bd10673b855edd4b9e0f2 |
 | From the same item: Redump 9465, TPWORLD.bin; optional, the other European image (either one will do; the two older ISO images, df7d864394ad46860984be60f2a3e448 and 50ffee97f9abc37e751f36d7239caea4, are still accepted) | 3c6590e438b3134e9208b407cc970d33 |
 
-**Patches are not needed.** The classic updates (Mac 2.04b3, 2.1, 2.1.1, 2.1.4; PC v1.1, v2.0) only replaced the game
-program. The port replaces that program with code translated from Mac 2.04b3, so their fixes are already in it and it
-reads only data files. A patch file given to the import is ignored: the importer says so and carries on. Only the 2000
-PC pressings are accepted, Redump 66484 and 9465. The 1999 pressing, Redump 66100, holds v1.0 data that the PC v2.0
-patch updated, so the importer refuses it. It lacks files the European edition needs (711 of 845 confirmed); use 66484
-or 9465.
+It needs Python 3.8 or later. Put the originals in one folder, then from WORK, the folder holding tpw-port:
 
-The importer needs Python 3.8 or later and nothing else. Put the downloads in one folder, then from WORK, the folder
-holding tpw-port:
-
-    python3 tpw-port/devtools/import_originals.py --from DOWNLOADS --to extracted
+    python3 tpw-port/devtools/import_originals.py --from ORIGINALS --to extracted
 
 It takes about half a minute and 2 GB of memory, writes nothing outside extracted/ and ends with "CHECK OK" (or the list
-of the files that differ). `--check extracted` checks the folders again later; `--whole-disc` also writes the rest of the
-CD (manuals, installers, extras), which nothing reads. The result:
+of the files that differ). `--check extracted` checks the folders again later. `--whole-disc` also writes the rest of
+the CD (manuals, installers, extras), which nothing reads. A patch file given to it is ignored. The result:
 
     WORK/
       tpw-port/                        this repository (tpw-port/tpw-decomp is the submodule)
@@ -66,53 +104,36 @@ CD (manuals, installers, extras), which nothing reads. The result:
         tpw-eur/Theme Park Data/       the European edition's game folder, when the PC image is there
         Theme_Park_World_Bonus_Stuff/  the bonus fonts, when that zip is there
 
-The simplest way to play is to run build/tpw_launcher with no options. Its window asks for your discs: drop the US Mac
-CD (or its zip or image) on it, plus the PC CD for the European edition. Every file is checked against the SHA-256 list
-and copied into the launcher's data folder (on macOS ~/Library/Application Support/STP-TPW Launcher), which also holds
-the saves. Press Play. `tpw_launcher --play us` (or eur) starts an edition from that folder without the window. The extracted
-folders above still work: from WORK, `build/tpw_launcher --game "extracted/disc-hfs/Theme Park Data"` (or
-devtools/run_launcher.sh, below).
+From WORK, `tpw-port/build/tpw_launcher --game "extracted/disc-hfs/Theme Park Data"` plays from there.
+`tpw_launcher --play us` (or eur) starts an edition from the launcher's data folder without its window.
+`tpw_launcher --help` lists every option.
 
-## Building
+### Running from the command line
 
-Needs CMake 3.20, a C++17 compiler and Python 3 (OpenGL is part of macOS). SDL3, zlib and a trimmed FFmpeg are built
-from source with the port (third_party/SDL3, third_party/zlib, third_party/ffmpeg); there is nothing to install
-(-DTPW_MOVIES=OFF builds without the films).
+    tpw-port/devtools/run_launcher.sh tpw-port/build NAME SECONDS [options]
 
-    git clone --recurse-submodules <tpw-port>
-    cmake -S tpw-port -B build
-    cmake --build build -j8 --target tpw_launcher
+run from WORK, starts tpw-port/build/tpw_launcher with its own user folder (tpw-port/build/user-NAME) and log
+(tpw-port/build/launch-NAME.log) and quits it after SECONDS. Options: --mute, --no-movies, --windowed, --display builtin,
+--background, --launcher-window, --play us|eur and --data DIR (start from the launcher's data folder instead of
+extracted/), and the scripted input used to test it (--click X,Y@PASS, --type TEXT@PASS, --drag X0,Y0-X1,Y1@PASS,
+--frames N). tpw_platform_tests (cmake --build build --target tpw_platform_tests) checks the platform layer without
+a display.
 
-The launcher reads the game's data tables at run time from the game folder's "SimTheme Park" program (or the one
---program names); the build holds none of them and needs no program. -DTPW_TABLES_AT_CONFIGURE=ON compiles them in at
-configure time instead, from -DTPW_GAME_PROGRAM=<path> (default: the CD's program).
+### Widescreen and resolution
 
-The submodule's URL is relative (../tpw-decomp), so it resolves to tpw-decomp beside tpw-port, on the same server or in
-the same folder. A clone of a local folder needs `git -c protocol.file.allow=always submodule update --init`.
-
-## Playing
-
-    devtools/run_launcher.sh build NAME SECONDS [options]
-
-runs build/tpw_launcher from the working folder with its own user folder (build/user-NAME) and log (build/launch-NAME.log)
-and quits it after SECONDS. Options: --mute, --no-movies, --windowed, --display builtin, --background, --launcher-window, --play us|eur and
---data DIR (start from the launcher's data folder instead of extracted/), and the scripted
-input used to test it (--click X,Y@PASS, --type TEXT@PASS, --drag X0,Y0-X1,Y1@PASS, --frames N).
-build/tpw_platform_tests checks the platform layer without a display.
-
-## Widescreen and resolution
-
-The port is widescreen by default: 16:9 at 3840 x 2160. The game renders offscreen at that size and the window shows it
-scaled to fit the screen, so a small window still gets a sharp picture (3D edges and the TrueType text; the game's own
-textures are 256 x 256 at most and do not gain detail). The game's bitmap fonts have one size for every resolution from
-1024 x 768 up, so the panels' small print is smaller on the screen at the larger sizes (at 3840 x 2160 about 0.7 times
-its size at 2730 x 1536); --resolution 2048x1536 keeps the size the original gives at its largest preset. The park and the lobby are drawn out to the new edges with the same vertical
-field of view, so the sides show more of the park and nothing is cut off; the panels on the park view are anchored to the
-edges of the screen (the money and the control panel left, the advisor right, dialogs in the middle); the 4:3 art (the
-logo, the loading screens, the films and the full-screen pictures) keeps its shape in the middle of the screen with black
-bars at the sides. The window fits the screen at that aspect, so a 16:9 screen shows no bars round the game. A machine
-whose framebuffers or textures are smaller than the size asked for gets the largest preset that fits, and the log says
-so once (TPW_LARGEST_GAME_SIZE=3000 in the environment tries that on a machine that has room).
+The port runs full screen (--windowed opens a window) and waits for the display's refresh (vsync). It is widescreen by
+default: 16:9 at 3840 x 2160. The game renders offscreen at that size and the window shows it scaled to fit the
+screen, so a small window still gets a sharp picture (3D edges and the TrueType text; the game's own textures are 256 x
+256 at most and do not gain detail). The game's bitmap fonts have one size for every resolution from 1024 x 768 up, so
+the panels' small print is smaller on the screen at the larger sizes (at 3840 x 2160 about 0.7 times its size at 2730 x
+1536); --resolution 2048x1536 keeps the size the original gives at its largest preset. The park and the lobby are drawn
+out to the new edges with the same vertical field of view, so the sides show more of the park and nothing is cut off;
+the panels on the park view are anchored to the edges of the screen (the money and the control panel left, the advisor
+right, dialogs in the middle); the 4:3 art (the logo, the loading screens, the films and the full-screen pictures) keeps
+its shape in the middle of the screen with black bars at the sides. The window fits the screen at that aspect, so a
+16:9 screen shows no bars round the game. A machine whose framebuffers or textures are smaller than the size asked for
+gets the largest preset that fits, and the log says so once (TPW_LARGEST_GAME_SIZE=3000 in the environment tries that
+on a machine that has room).
 
     tpw_launcher --resolution 2048x1536   a smaller size, named by its 4:3 size (the game's own presets from 512x384 to
                                           2048x1536, which keep their height when widened: 2730 x 1536 at 16:9; or
