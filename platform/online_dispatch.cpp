@@ -9,19 +9,26 @@
 // that would run on them keeps native 8 byte pointers or arena offsets, so it cannot be called on those slots (see the wire-w1 report).
 // Not in platform/msl.cpp, which the test libraries link.
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <new>
 
+#include "FS_LoadSave.h"
 #include "FS_MasterSave.h"
 #include "FS_Online.h"
+#include "FS_UserInfo.h"
 #include "MslSubscriptionTree.h"
+#include "TPString.h"
 #include "ThingReceivers.h"
 #include "UIInterface.h"
 #include "lobby.h"
 #include "online.h"
 #include "std_basic_filebuf.h"
+#include "std_basic_istream.h"
 #include "ui_DrawObject.h"
 #include "ui_ime.h"
+#include "ui_mainmenu.h"
 #include "ui_publishParkPanel.h"
 
 namespace {
@@ -209,3 +216,102 @@ void OnlineSystemCtor(void* self) { new (self) CFSOnlineSystem(); }   // 0x1016f
 namespace parklist_callee {
 void RankCtor(void* mem) { new (mem) InterfaceRankTextObject(nullptr); }
 }  // namespace parklist_callee
+
+// ---- wire-w1b: the FTP client, the upload request and the main menu's publish path (include/FS_Online.h, ui_mainmenu.h, FS_LoadSave.h)
+
+// The runtime glue under the spellings the FTP, Winsock and list code use: operator delete 0x10238218, free 0x10238a70, atoi 0x10238590,
+// fopen 0x102389b0, fclose 0x102388c0, fwrite 0x1023a5e8 and strncpy 0x10238500 (the Mac's results that no caller reads are dropped).
+namespace ftp_callee {
+void OperatorDelete(void* p) { IME::MslDelete(p); }
+int32_t Atoi(const char* text) { return std::atoi(text); }
+void* Fopen(const char* path, const char* mode) { return std::fopen(path, mode); }
+void Fclose(void* file) { std::fclose(static_cast<std::FILE*>(file)); }
+void Fwrite(const void* buffer, int32_t size, int32_t count, void* file) {
+    std::fwrite(buffer, static_cast<size_t>(size), static_cast<size_t>(count), static_cast<std::FILE*>(file));
+}
+char* Strncpy(char* to, const char* from, int32_t n) { return std::strncpy(to, from, static_cast<size_t>(n)); }
+
+// FTPClient::ParseFileSize 0x1020c744 and _CloseDSocket 0x1020c174 (src/game/online/FTPClient.cpp): host members of the host FTPClient, which
+// is the object the caller passes.
+int32_t ParseFileSize(FTPClient* self, char* text) { return self->ParseFileSize(text); }
+void CloseDSocket(FTPClient* self, int32_t* sock) { self->_CloseDSocket(*sock); }
+}  // namespace ftp_callee
+
+namespace v5917_callee {
+void Free(void* p) { std::free(p); }              // 0x10238a70
+void OperatorDelete(void* p) { IME::MslDelete(p); }   // 0x10238218
+// 0x10153b24 on the nodes of std::set<unsigned short>'s tree (UshortSetTree::node starts with the common node base).
+void BalanceInsert(UshortSetTree::node* node, UshortSetTree::node* root) {
+    MslRedBlackTree::balance_insert(reinterpret_cast<MslRedBlackTree::node_base*>(node), reinterpret_cast<MslRedBlackTree::node_base*>(root));
+}
+}  // namespace v5917_callee
+
+namespace v51116_callee {
+void OperatorDelete(void* block) { IME::MslDelete(block); }   // 0x10238218
+}
+namespace v51052_callee {
+void OperatorDelete(void* block) { IME::MslDelete(block); }   // 0x10238218
+}
+namespace v51126_callee {
+void OperatorDelete(void* p) { IME::MslDelete(p); }   // 0x10238218
+}
+
+// The library functions v51070 (src/game/online/FTPClient.cpp, MslSupport.cpp) calls on the Mac's words: the runtime glue, 0x102109fc
+// std::list<CToken>::clear (src/game/online/OnlineParser.cpp), which keeps the Mac's 32-bit words (Ptr32) like the list the caller holds,
+// and the wide ostream's flush.
+namespace v51070_callee {
+void Delete(void* p) { IME::MslDelete(p); }                                                   // 0x10238218
+void* New(uint32_t size) { return IME::MslNew(size); }                                        // 0x102384b8
+void* NewArray(uint32_t size) { return IME::MslNewArray(size); }                              // 0x10238668
+void Strcpy(char* to, const char* from) { IME::MslStrcpy(to, from); }                         // 0x10238410
+uint32_t Strlen(const char* s) { return static_cast<uint32_t>(IME::MslStrlen(s)); }           // 0x10238650
+void Throw(const char* type, void* object, const void* dtor) { IME::MslThrow(type, object, dtor); }   // 0x10238680
+void CTokenListClear(void* list) { ::CTokenListClear(static_cast<CTokenList*>(list)); }       // 0x102109fc
+// 0x102268f8 std::basic_ostream<wchar_t>::flush (src/game/MslSupport.cpp) on the stream the sentry's destructor (0x1021f7b0) found through
+// its word: the stream starts with its ios word, an arena offset (Ptr32), which is what the translation reads.
+void OstreamFlush(void* stream) { WostreamFlush(static_cast<WostreamW*>(stream)); }
+}  // namespace v51070_callee
+
+// 0x1020e2a0 Sock::Sock and 0x1020e2d4 Sock::~Sock (src/game/online/FTPClient.cpp): the Mac's layout (vtable word, socket word), which is what
+// CSock and Connection hold from offset 0.
+namespace csock_callee {
+void SockCtor(void* self) { v51070::SockCtor(static_cast<uint32_t*>(self)); }
+void SockDtor(void* self, int16_t flag) { v51070::SockDtor(static_cast<Sock*>(self), flag); }
+}  // namespace csock_callee
+
+// 0x10175748 FSOnlineUploadServerConnectionCallback (src/game/online/FS_Online.cpp), the function behind the TVector at 0x10267468; and
+// 0x1017de54 CFSUserInfo::CFSUserInfo on the block the caller made with operator new.
+namespace ftpreq_callee {
+void UploadConnectionCallback(int32_t a, int32_t b, void* c, void* d) { ::FSOnlineUploadServerConnectionCallback(a, b, c, d); }
+void UserInfoCtor(CFSUserInfo* self) { new (self) CFSUserInfo(); }
+}  // namespace ftpreq_callee
+
+// 0x101fd130 ~TbTList<TFSLoadSaveSaveFileDetails*, ...> called directly with the flag 0: it empties the list (the object is a global
+// whose own destructor then finds it empty).
+namespace v51056_callee {
+void LoadSaveListDtor(CFSLoadSave* self) { self->RemoveAll(); }
+}  // namespace v51056_callee
+
+// The publish path of the main menu (MainGameMenuConfirmPublish_OK, src/game/ui/ui_mainmenu.cpp): CFSOnlineSystem::ReturnUploadFilename
+// 0x10175608 builds the wide name in the caller's 0x40 byte temporary, UniStringToString 0x10005670 makes the narrow text whose address is
+// the path of the file to upload (the Mac fills the global gOnlineUploadFile itself, whose word at 0x08 is that address; the host's global is
+// only 16 bytes, so the text lives in a string of its own that the next call replaces), and 0x10238710 destroys the wide name.
+namespace mainmenu_callee {
+
+void ReturnUploadFilename(void* result, CFSOnlineSystem* system) {
+    static_assert(sizeof(TbDynamicStringTemplate<char16_t>) <= 0x40, "the caller's temporary holds a wide string");
+    new (result) TbDynamicStringTemplate<char16_t>(system->ReturnUploadFilename());
+}
+
+void UniStringToUploadPath(OnlineUploadFile* out, const void* wide) {
+    static TbDynamicStringTemplate<char> narrow;
+    UniStringToString(narrow, *static_cast<const TbDynamicStringTemplate<char16_t>*>(wide));
+    out->mPath = narrow.mData;
+}
+
+void WideStringDtor(void* string, int16_t flag) {
+    static_cast<TbDynamicStringTemplate<char16_t>*>(string)->~TbDynamicStringTemplate();
+    if (flag > 0) IME::MslDelete(string);
+}
+
+}  // namespace mainmenu_callee

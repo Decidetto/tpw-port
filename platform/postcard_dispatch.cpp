@@ -26,6 +26,8 @@
 #include <new>
 #include <string>
 
+#include <unistd.h>
+
 #include "FS_Online.h"
 #include "FS_UserInfo.h"
 #include "InterfaceWindow.h"
@@ -143,6 +145,20 @@ void ListEraseRange(void* list, uint32_t first, uint32_t last) {
         Word(list) -= 1;
         node = next;
     }
+}
+
+// The substring [pos, pos + min(n, size - pos)) of the string whose word is at `src`, as a new representation. The Mac throws
+// std::out_of_range for a pos beyond the end (0x101b2918, 0x10001c80); the throw is a log here and the substring is empty.
+uint32_t NewSubRep(const void* src, uint32_t pos, uint32_t n) {
+    const uint32_t word = Word(const_cast<void*>(src));
+    if (word == 0) return NewRep(nullptr, 0, 1);
+    const WordRep* rep = Rep(word);
+    if (pos > rep->len) {
+        std::fprintf(stderr, "postcard_dispatch: string substring: pos %u > length %u (the Mac throws out_of_range)\n",
+                     static_cast<unsigned>(pos), static_cast<unsigned>(rep->len));
+        pos = rep->len;
+    }
+    return NewRep(Data(rep) + pos, std::min<uint32_t>(n, rep->len - pos), 1);
 }
 
 bool InUserOutbox(const void* address) {
@@ -280,6 +296,18 @@ void StringAssign(void* str, const char* text, uint32_t length) { AssignText(str
 void StringDtor(void* str, int16_t flag) { DropText(str, flag); }
 void WStringDtor(void* str, int16_t flag) { DropText(str, flag); }
 
+// 0x1023baa8 __ptr_glue: calls the function whose TVector is `tvector` (the truncated address of the table the Email keeps in mCallback)
+// with the two arguments. The postcard panel's table is IllCallYouBack's (0x10267cf8, ui_Postcard.cpp). The outbox panel's table
+// (0x10268500) belongs to OutboxCallback 0x101e4124, which is not translated, so that call is logged and does nothing.
+void PtrGlue(uint32_t tvector, int32_t a, int32_t b) {
+    if (tvector == static_cast<uint32_t>(reinterpret_cast<uintptr_t>(kIllCallYouBackVector))) {
+        IllCallYouBack(static_cast<EmailCompletionCode>(a), static_cast<EmailErrorCode>(b));
+        return;
+    }
+    std::fprintf(stderr, "email_callee::PtrGlue: no translation behind the callback table 0x%x (OutboxCallback 0x101e4124)\n",
+                 static_cast<unsigned>(tvector));
+}
+
 // first is the word of the first node to go (Email::Reset passes the list's next); last the address of the node that stays.
 // SendToOutbox empties the Outbox's host list (first 0, last the list).
 void ListErase(void* list, uint32_t first, void* last) {
@@ -303,7 +331,21 @@ void StringInit(void* str) { Word(str) = NewRep(nullptr, 0, 1); }
 void WStringInit(void* str) { Word(str) = NewRep(nullptr, 0, 2); }
 void ListInit(void* list) { InitList(list); }
 
+// 0x101b2918 std::string(const std::string&, pos, n) on a word that holds nothing yet, and 0x10001c80 assign(const std::string&, pos, n),
+// which lets go of the old representation after the new one is made (the source may be the string itself).
+void StringSubCtor(void* dst, const void* src, uint32_t pos, uint32_t n) { Word(dst) = NewSubRep(src, pos, n); }
+void StringSubAssign(void* dst, const void* src, uint32_t pos, uint32_t n) {
+    const uint32_t old = Word(dst);
+    Word(dst) = NewSubRep(src, pos, n);
+    FreeRep(old);
+}
+
 }  // namespace emailcb_callee
+
+// 0x102394d8 unlink (c/c++_shared).
+namespace outboxdel_callee {
+void Unlink(const char* path) { ::unlink(path); }
+}  // namespace outboxdel_callee
 
 namespace sendbody_callee {
 

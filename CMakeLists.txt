@@ -95,6 +95,11 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
   target_include_directories(tpw_platform PUBLIC ${TPW_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/platform ${TPW_DECOMP_DIR}/platform)
   target_link_libraries(tpw_platform PUBLIC SDL3::SDL3 OpenGL::GL)
   target_compile_definitions(tpw_platform PRIVATE GL_SILENCE_DEPRECATION)
+  # The IJG's libjpeg 6b (third_party/libjpeg-6b, see its NOTE.md): the game's JPEG calls (platform/jpeg_bridge.cpp) run on it. Its
+  # headers are only the platform layer's own; the unit test libraries never compile it (they fake the calls).
+  enable_language(C)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/libjpeg-6b ${CMAKE_CURRENT_BINARY_DIR}/third_party/libjpeg-6b)
+  target_link_libraries(tpw_platform PRIVATE tpw_libjpeg)
   if(APPLE)
     # platform/gdi.cpp draws the signs' text with CoreText into a CoreGraphics bitmap.
     target_link_libraries(tpw_platform PUBLIC "-framework CoreText" "-framework CoreGraphics" "-framework CoreFoundation" objc)
@@ -131,9 +136,9 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
     OUTPUT ${TPW_STUBS}
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/launcher/gen_stubs.py
             --out ${TPW_STUBS} --include-dir ${TPW_INCLUDE_DIR}
-            --nm ${CMAKE_NM} --provides $<TARGET_FILE:SDL3-static> --provides $<TARGET_FILE:tpw_zlib> ${TPW_STUB_SYSLIBS} ${TPW_MOVIE_SYSLIBS}
+            --nm ${CMAKE_NM} --provides $<TARGET_FILE:SDL3-static> --provides $<TARGET_FILE:tpw_zlib> --provides $<TARGET_FILE:tpw_libjpeg> ${TPW_STUB_SYSLIBS} ${TPW_MOVIE_SYSLIBS}
             $<TARGET_FILE:tpw> $<TARGET_FILE:tpw_platform> $<TARGET_OBJECTS:tpw_launcher_objects>
-    DEPENDS tpw tpw_platform SDL3-static tpw_zlib $<TARGET_OBJECTS:tpw_launcher_objects> launcher/gen_stubs.py
+    DEPENDS tpw tpw_platform SDL3-static tpw_zlib tpw_libjpeg $<TARGET_OBJECTS:tpw_launcher_objects> launcher/gen_stubs.py
     COMMAND_EXPAND_LISTS VERBATIM
     COMMENT "Generating stand-ins for untranslated and unimplemented functions")
   add_executable(tpw_launcher $<TARGET_OBJECTS:tpw_launcher_objects> ${TPW_STUBS})
