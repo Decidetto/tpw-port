@@ -2,11 +2,12 @@
 // player makes.
 //
 // The game's films are QuickTime files (Sorenson video at half width, IMA ADPCM sound).
-// When the build found FFmpeg they are decoded with it: MoviesTask draws the frame that is
-// due into the window's back buffer, scaled to the movie's box, and presents it, and the
-// sound goes to an SDL audio stream. Without FFmpeg, or with the launcher's --no-movies,
-// OpenMovieFile answers that the routine is not implemented; the game's player reports the
-// error and says the movie has finished, as it does when a file is missing.
+// They are decoded with FFmpeg (built from third_party/ffmpeg when TPW_MOVIES is on, the
+// default): MoviesTask draws the frame that is due into the window's back buffer, scaled to
+// the movie's box, and presents it, and the sound goes to an SDL audio stream. With
+// TPW_MOVIES off, or with the launcher's --no-movies, OpenMovieFile answers that the routine
+// is not implemented; the game's player reports the error and says the movie has finished,
+// as it does when a file is missing.
 #include <SDL3/SDL.h>
 
 #include <chrono>

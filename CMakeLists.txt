@@ -1,7 +1,7 @@
 # tpw-port: the playable port. The translation is the tpw-decomp submodule, built as it is except for the files under
 # overrides/, which take the place of the submodule's file of the same path (the port's fixes, listed in FIXES.md).
 cmake_minimum_required(VERSION 3.20)
-project(tpw_port LANGUAGES CXX)
+project(tpw_port LANGUAGES C CXX)   # C for the vendored libraries (third_party/)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,11 +17,12 @@ set(TPW_DECOMP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tpw-decomp)
 if(NOT EXISTS ${TPW_DECOMP_DIR}/CMakeLists.txt)
   message(FATAL_ERROR "tpw-decomp is missing: git submodule update --init")
 endif()
-# The game's data tables come from your own copy of the game (see tpw-decomp's README); the default is the extracted patch
-# next to this repository.
+# The game's data tables come from your own copy of the game (see tpw-decomp's README); the default is the CD's own
+# SimTheme Park application, as the import writes it next to this repository. Any full Mac build will do (the CD's 2.0.1,
+# the 2.04b3 patch's, the 2.1 releases).
 if(NOT TPW_GAME_PROGRAM AND NOT DEFINED ENV{TPW_GAME_PROGRAM})
-  set(TPW_GAME_PROGRAM "${CMAKE_CURRENT_SOURCE_DIR}/../extracted/SimTPPatch_204b3/Sim Theme Park Patch/patch 2.04b3/SimTheme Park"
-      CACHE FILEPATH "The 2.04b3 SimTheme Park application the data tables are read from")
+  set(TPW_GAME_PROGRAM "${CMAKE_CURRENT_SOURCE_DIR}/../extracted/disc-hfs/Theme Park Data/SimTheme Park"
+      CACHE FILEPATH "A full Mac SimTheme Park application (its data fork) the data tables are read from")
 endif()
 set(TPW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
@@ -56,14 +57,13 @@ foreach(header ${TPW_OVERLAY_HEADERS})
 endforeach()
 
 add_subdirectory(${TPW_DECOMP_DIR} tpw-decomp)
-find_package(ZLIB REQUIRED)
 
 # The native launcher (Milestone 1 unit 9): the translated game code, the platform layer
 # (platform/: the Elegant Chaos shims and Mac Toolbox calls on SDL3 and OpenGL) and
 # generated stand-ins for everything that is not translated or implemented yet
 # (launcher/gen_stubs.py, rerun by every build, so a stand-in disappears when its unit
-# lands). Skipped when SDL3 or OpenGL is missing: the library and the tests do not need it.
-option(TPW_BUILD_LAUNCHER "Build the native launcher (needs SDL3 and OpenGL)" ON)
+# lands). Skipped when OpenGL or Python 3 is missing: the library and the tests do not need it.
+option(TPW_BUILD_LAUNCHER "Build the native launcher (needs OpenGL and Python 3)" ON)
 # The translation's tree: this one here; tpw-port sets it to its tpw-decomp submodule.
 if(NOT TPW_DECOMP_DIR)
   set(TPW_DECOMP_DIR ${CMAKE_CURRENT_SOURCE_DIR})
@@ -73,11 +73,22 @@ if(NOT TPW_INCLUDE_DIR)
   set(TPW_INCLUDE_DIR ${TPW_DECOMP_DIR}/include)
 endif()
 if(TPW_BUILD_LAUNCHER)
-  find_package(SDL3 CONFIG QUIET)
   find_package(OpenGL QUIET)
   find_package(Python3 COMPONENTS Interpreter QUIET)
 endif()
-if(TPW_BUILD_LAUNCHER AND SDL3_FOUND AND OpenGL_FOUND AND Python3_FOUND)
+if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
+  # SDL3 is built from source here (third_party/SDL3, static), never taken from the host: only the system's own frameworks
+  # and libraries are linked, and no copy of SDL, libusb or the like that the host has is looked for.
+  set(SDL_STATIC ON CACHE BOOL "" FORCE)
+  set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+  set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+  set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+  set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+  set(SDL_UNINSTALL OFF CACHE BOOL "" FORCE)
+  set(SDL_HIDAPI_LIBUSB OFF CACHE BOOL "" FORCE)
+  add_subdirectory(third_party/SDL3 SDL3 EXCLUDE_FROM_ALL)
+  target_compile_options(SDL3-static PRIVATE -w)   # SDL's C is not ours to warn about
   file(GLOB TPW_PLATFORM_SOURCES CONFIGURE_DEPENDS platform/*.cpp ${TPW_DECOMP_DIR}/platform/*.cpp)
   list(REMOVE_DUPLICATES TPW_PLATFORM_SOURCES)
   add_library(tpw_platform STATIC ${TPW_PLATFORM_SOURCES})
@@ -89,45 +100,40 @@ if(TPW_BUILD_LAUNCHER AND SDL3_FOUND AND OpenGL_FOUND AND Python3_FOUND)
     target_link_libraries(tpw_platform PUBLIC "-framework CoreText" "-framework CoreGraphics" "-framework CoreFoundation" objc)
   endif()
 
-  # The game's films (QuickTime, Sorenson video) play when FFmpeg's libraries are there
-  # (platform/quicktime.cpp); without them the game skips its films.
-  option(TPW_MOVIES "Play the game's films with FFmpeg when it is installed" ON)
+  # The game's films (QuickTime, Sorenson video) play through FFmpeg (platform/quicktime.cpp), built from source here
+  # (third_party/ffmpeg: a trimmed FFmpeg, LGPL 2.1 or later, static); no copy on the host is ever looked for. With
+  # TPW_MOVIES off the game skips its films.
+  option(TPW_MOVIES "Play the game's films (FFmpeg, built from third_party/ffmpeg)" ON)
   set(TPW_MOVIE_SYSLIBS)
   if(TPW_MOVIES)
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-      pkg_check_modules(TPW_FFMPEG QUIET IMPORTED_TARGET libavformat libavcodec libswscale libavutil)
-    endif()
-    if(TPW_FFMPEG_FOUND)
-      target_compile_definitions(tpw_platform PRIVATE TPW_HAVE_FFMPEG=1)
-      target_link_libraries(tpw_platform PUBLIC PkgConfig::TPW_FFMPEG)
-      foreach(lib ${TPW_FFMPEG_LINK_LIBRARIES})
-        list(APPEND TPW_MOVIE_SYSLIBS --syslib ${lib})
-      endforeach()
-      message(STATUS "tpw: films play (FFmpeg ${TPW_FFMPEG_libavformat_VERSION})")
-    else()
-      message(STATUS "tpw: films are skipped (FFmpeg not found)")
-    endif()
+    enable_language(C)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/ffmpeg ffmpeg)
+    target_compile_definitions(tpw_platform PRIVATE TPW_HAVE_FFMPEG=1)
+    target_link_libraries(tpw_platform PUBLIC tpw_ffmpeg)
+    # The generator must not stand in for FFmpeg's functions: the static library defines them.
+    set(TPW_MOVIE_SYSLIBS --provides $<TARGET_FILE:tpw_ffmpeg>)
+    message(STATUS "tpw: films play (FFmpeg 9.0.2, third_party/ffmpeg)")
   endif()
 
   add_library(tpw_launcher_objects OBJECT launcher/main.cpp launcher/pending_manual.cpp launcher/static_init.cpp)
   target_include_directories(tpw_launcher_objects PRIVATE ${TPW_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/platform ${TPW_DECOMP_DIR}/platform launcher)
   target_link_libraries(tpw_launcher_objects PRIVATE SDL3::SDL3)
 
-  # zlib's inflate (src/bullfrog/LbZLib.cpp) comes from the host, so the generator must not stand in for it.
+  # SDL3 and zlib's inflate (src/bullfrog/LbZLib.cpp) come from the static libraries built here (--provides), so the
+  # generator must not stand in for them.
   if(APPLE)
-    set(TPW_STUB_SYSLIBS --syslib /System/Library/Frameworks/OpenGL.framework/OpenGL --syslib /usr/lib/libz.dylib)
+    set(TPW_STUB_SYSLIBS --syslib /System/Library/Frameworks/OpenGL.framework/OpenGL)
   else()
-    set(TPW_STUB_SYSLIBS --syslib libGL.so.1 --syslib libz.so.1)
+    set(TPW_STUB_SYSLIBS --syslib libGL.so.1)
   endif()
   set(TPW_STUBS ${CMAKE_CURRENT_BINARY_DIR}/stubs_generated.cpp)
   add_custom_command(
     OUTPUT ${TPW_STUBS}
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/launcher/gen_stubs.py
             --out ${TPW_STUBS} --include-dir ${TPW_INCLUDE_DIR}
-            --nm ${CMAKE_NM} --syslib $<TARGET_FILE:SDL3::SDL3> ${TPW_STUB_SYSLIBS} ${TPW_MOVIE_SYSLIBS}
+            --nm ${CMAKE_NM} --provides $<TARGET_FILE:SDL3-static> --provides $<TARGET_FILE:tpw_zlib> ${TPW_STUB_SYSLIBS} ${TPW_MOVIE_SYSLIBS}
             $<TARGET_FILE:tpw> $<TARGET_FILE:tpw_platform> $<TARGET_OBJECTS:tpw_launcher_objects>
-    DEPENDS tpw tpw_platform $<TARGET_OBJECTS:tpw_launcher_objects> launcher/gen_stubs.py
+    DEPENDS tpw tpw_platform SDL3-static tpw_zlib $<TARGET_OBJECTS:tpw_launcher_objects> launcher/gen_stubs.py
     COMMAND_EXPAND_LISTS VERBATIM
     COMMENT "Generating stand-ins for untranslated and unimplemented functions")
   add_executable(tpw_launcher $<TARGET_OBJECTS:tpw_launcher_objects> ${TPW_STUBS})
@@ -150,7 +156,7 @@ if(TPW_BUILD_LAUNCHER AND SDL3_FOUND AND OpenGL_FOUND AND Python3_FOUND)
   target_link_libraries(tpw_platform_tests PRIVATE tpw_platform)
   add_test(NAME platform COMMAND tpw_platform_tests)
 else()
-  message(STATUS "tpw: launcher not built (needs SDL3, OpenGL and Python 3)")
+  message(STATUS "tpw: launcher not built (needs OpenGL and Python 3)")
 endif()
 
 if(NOT TARGET tpw_launcher)

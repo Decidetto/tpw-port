@@ -2,13 +2,14 @@
 """gen_stubs.py: writes stubs_generated.cpp, the stand-ins that let the launcher link while
 some of what it calls is not wired up yet.
 
-usage: gen_stubs.py --out FILE --include-dir DIR [--syslib LIB ...] [--c-function NAME ...]
+usage: gen_stubs.py --out FILE --include-dir DIR [--syslib LIB ...] [--provides ARCHIVE ...] [--c-function NAME ...]
                     [--nm NM] [--cxxfilt C++FILT] OBJECT_OR_ARCHIVE ...
 
 The inputs are everything the launcher links that we build ourselves: libtpw.a (the
 translated game code), libtpw_platform.a (the platform layer) and the launcher's objects.
-Every symbol those inputs need and none of them defines, and that the host's system
-libraries do not provide either, gets a stand-in:
+Every symbol those inputs need and none of them defines, and that neither the host's system
+libraries nor the static libraries given with --provides (SDL3, zlib and FFmpeg, built from
+source with the launcher) define, gets a stand-in:
 
 - a function becomes a stub that logs "unimplemented platform call: <name>" (or "not
   wired up yet (does nothing): <name>" for the rest) the first time it is called and returns zero in the
@@ -101,6 +102,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--include-dir", required=True)
     ap.add_argument("--syslib", action="append", default=[], help="a library the launcher links (dlsym'ed)")
+    ap.add_argument("--provides", action="append", default=[], help="a static library the launcher links; the symbols it defines get no stand-in")
     ap.add_argument("--c-function", action="append", default=[], help="an unmangled name that is a function")
     ap.add_argument("--nm", default="nm")
     ap.add_argument("--cxxfilt", default="c++filt")
@@ -108,6 +110,7 @@ def main():
     args = ap.parse_args()
 
     undefined, defined = symbols(args.nm, args.inputs)
+    defined |= symbols(args.nm, args.provides)[1]
     needed = sorted(undefined - defined)
     system = SystemLibraries(args.syslib)
     names = [c_name(s) for s in needed]

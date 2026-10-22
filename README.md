@@ -1,7 +1,7 @@
 # tpw-port
 
 A native port of Theme Park World (Sim Theme Park), built on the [tpw-decomp](https://gitlab.com/tpw-decomp/tpw-decomp) translation of the
-1999 Mac build. It runs on macOS with SDL3 and OpenGL.
+1999 Mac build. It runs on macOS and uses OpenGL (part of macOS).
 
 tpw-decomp is the reference: the game's own functions, each behaving exactly as on the Mac, bugs included. This repository
 adds what it takes to play:
@@ -9,7 +9,7 @@ adds what it takes to play:
 - launcher/: the program (window, options, the game's start-up sequence) and the generated stand-ins for the names the
   code calls that nothing defines yet;
 - platform/: the platform layer, the Mac Toolbox, Sound Sprockets, QuickTime and the game's Windows-style shims done on
-  SDL3, OpenGL and CoreText;
+  SDL3 (built from source in third_party/SDL3), OpenGL and CoreText;
 - overrides/: the port's fixes, 53 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what the port does
   and why. Each file there is built in place of the tpw-decomp file of the same path; the rest of tpw-decomp is built as
   it is. The headers are read from a copy of tpw-decomp's headers in the build folder with the overridden ones laid over
@@ -25,8 +25,10 @@ one and logs "not wired up yet (does nothing): <name>" the first time it is reac
 
 ## Nothing from the game
 
-Neither repository holds any part of the game. You need your own copy: the 2.04b3 patch's "SimTheme Park" application
-(the build reads six data tables from it) and the CD's "Theme Park Data" folder, which the game reads at run time.
+Neither repository holds any part of the game. You need your own copy. The US edition needs only the Mac CD zip: the
+build reads its data tables from the CD's "SimTheme Park" program and the game reads the CD's "Theme Park Data" folder
+at run time. The European edition needs the PC image and the Mac CD zip as well: the data tables come from the Mac
+program, and the PC disc cannot supply them.
 
 ## Game data
 
@@ -35,17 +37,22 @@ names), unpacks them and checks every file it writes against the SHA-256 list it
 
 | Original | MD5 |
 | --- | --- |
-| From the US Mac CD (SimThemePark Mac US CD v2.0.1): the zip holding the CD image "Theme Park.toast" | f03abce3f375bc72d863cc527749e645 |
-| From the patches item (SimThemePark Mac Patches and Updaters): the 2.04b3 patch, a .sea.sit | 23bcbf4d6d6aec0b5ab00d47840b3f63 |
+| From the US Mac CD (SimThemePark Mac US CD v2.0.1): the zip holding the CD image "Theme Park.toast"; all the US edition needs | f03abce3f375bc72d863cc527749e645 |
 | From the demo and bonus item (ThemeParkWorld Mac Demo and Bonus Stuff): the Bonus Stuff zip; optional, its fonts serve only the platform tests | 1adeba0b0cf5edcc623d44181a321f28 |
-| From the UK PC CD item (ThemeParkWorld PC UK-European CD Bullfrog EA): either ISO image; optional, for the Theme Park World edition (devtools/import_eur.py writes extracted/tpw-eur) | df7d864394ad46860984be60f2a3e448 or 50ffee97f9abc37e751f36d7239caea4 |
+| From the UK PC CD item (ThemeParkWorld PC UK-European CD Bullfrog EA): Redump 66484, ThemeParkWorld.img; optional, for the European (Theme Park World) edition, with the Mac CD zip (devtools/import_eur.py writes extracted/tpw-eur) | cd1cc4c33c1bd10673b855edd4b9e0f2 |
+| From the same item: Redump 9465, TPWORLD.bin; optional, the other European image (either one will do; the two older ISO images, df7d864394ad46860984be60f2a3e448 and 50ffee97f9abc37e751f36d7239caea4, are still accepted) | 3c6590e438b3134e9208b407cc970d33 |
 
-It needs machfs, from pip, for the CD's HFS volume and unar for the StuffIt archive (macOS: `brew install unar`; Debian
-and Ubuntu: `apt install unar`). Put the downloads in one folder, then from WORK, the folder holding tpw-port:
+**Patches are not needed.** The classic updates (Mac 2.04b3, 2.1, 2.1.1, 2.1.4; PC v1.1, v2.0) only replaced the game
+program. The port replaces that program with code translated from Mac 2.04b3, so their fixes are already in it and it
+reads only data files. A patch file given to the import is ignored: the importer says so and carries on. Only the 2000
+PC pressings are accepted, Redump 66484 and 9465. The 1999 pressing, Redump 66100, holds v1.0 data that the PC v2.0
+patch updated, so the importer refuses it. It lacks files the European edition needs (711 of 845 confirmed); use 66484
+or 9465.
 
-    python3 -m venv venv
-    venv/bin/python -m pip install machfs
-    venv/bin/python tpw-port/devtools/import_originals.py --from DOWNLOADS --to extracted
+The importer needs Python 3.8 or later and nothing else. Put the downloads in one folder, then from WORK, the folder
+holding tpw-port:
+
+    python3 tpw-port/devtools/import_originals.py --from DOWNLOADS --to extracted
 
 It takes about half a minute and 2 GB of memory, writes nothing outside extracted/ and ends with "CHECK OK" (or the list
 of the files that differ). `--check extracted` checks the folders again later; `--whole-disc` also writes the rest of the
@@ -54,21 +61,25 @@ CD (manuals, installers, extras), which nothing reads. The result:
     WORK/
       tpw-port/                        this repository (tpw-port/tpw-decomp is the submodule)
       extracted/
-        SimTPPatch_204b3/Sim Theme Park Patch/patch 2.04b3/SimTheme Park
         disc-hfs/Theme Park Data/      each file's data fork, with NAME.rsrc (its resource fork) and NAME.finfo
+        tpw-eur/Theme Park Data/       the European edition's game folder, when the PC image is there
         Theme_Park_World_Bonus_Stuff/  the bonus fonts, when that zip is there
 
-The build finds the program there by default (TPW_GAME_PROGRAM names another), and from WORK the game runs with
+The build reads the data tables from the CD's program there ("SimTheme Park" in disc-hfs/Theme Park Data) by default,
+and from WORK the game runs with
 `build/tpw_launcher --game "extracted/disc-hfs/Theme Park Data"` (or devtools/run_launcher.sh, below).
 
 ## Building
 
-Needs CMake 3.20, a C++17 compiler, zlib, Python 3, SDL3 and OpenGL; FFmpeg's libraries for the films (optional, the game
-skips its films without them).
+Needs CMake 3.20, a C++17 compiler and Python 3 (OpenGL is part of macOS). SDL3, zlib and a trimmed FFmpeg are built
+from source with the port (third_party/SDL3, third_party/zlib, third_party/ffmpeg); there is nothing to install
+(-DTPW_MOVIES=OFF builds without the films).
 
     git clone --recurse-submodules <tpw-port>
-    cmake -S tpw-port -B build -DTPW_GAME_PROGRAM="<the 2.04b3 SimTheme Park application>"
+    cmake -S tpw-port -B build
     cmake --build build -j8 --target tpw_launcher
+
+-DTPW_GAME_PROGRAM=<path> reads the data tables from another full Mac "SimTheme Park" program instead of the CD's.
 
 The submodule's URL is relative (../tpw-decomp), so it resolves to tpw-decomp beside tpw-port, on the same server or in
 the same folder. A clone of a local folder needs `git -c protocol.file.allow=always submodule update --init`.
@@ -112,4 +123,6 @@ moves its clicks on right-anchored and centred panels (the script's header has t
 - [tpw-decomp](https://gitlab.com/tpw-decomp/tpw-decomp): the translation and its differential tests.
 - [FIXES.md](FIXES.md): every place the port behaves differently from the Mac.
 
-No license has been chosen yet.
+No license has been chosen yet for the port's own code. third_party/ffmpeg is FFmpeg 9.0.2 (trimmed), under the GNU LGPL
+version 2.1 or later (third_party/ffmpeg/COPYING.LGPLv2.1); it is built from that source with the game, so you can change
+it and rebuild. Details in third_party/ffmpeg/NOTE.md.

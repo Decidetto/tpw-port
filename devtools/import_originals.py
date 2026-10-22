@@ -7,48 +7,59 @@ usage: python3 devtools/import_originals.py --from DOWNLOADS --to WORK/extracted
 The originals are found in DOWNLOADS (searched with its subfolders) by their size and MD5, never by their names:
 
   cd     the US CD image, SimTheme Park for the Mac 2.0.1 (a zip holding "Theme Park.toast", a hybrid ISO 9660 and HFS
-         disc), MD5 f03abce3f375bc72d863cc527749e645
-  patch  the SimTheme Park 2.04b3 patch (a self-extracting StuffIt archive, .sea.sit), MD5 23bcbf4d6d6aec0b5ab00d47840b3f63
+         disc), MD5 f03abce3f375bc72d863cc527749e645. This is all the US edition needs.
   bonus  optional: Theme Park World Bonus Stuff (a zip; its TrueType fonts serve only the platform tests),
          MD5 1adeba0b0cf5edcc623d44181a321f28
-  eur    optional: the Theme Park World UK/European PC CD, an ISO image of either pressing (for tpw --eur),
-         MD5 df7d864394ad46860984be60f2a3e448 or 50ffee97f9abc37e751f36d7239caea4
+  eur    optional: the Theme Park World European PC CD, an image of one of its pressings (for tpw --eur): the Redump
+         66484 ThemeParkWorld.img (MD5 cd1cc4c33c1bd10673b855edd4b9e0f2) or the Redump 9465 TPWORLD.bin (MD5
+         3c6590e438b3134e9208b407cc970d33), either as the raw 2352-byte-sector image, or one of the two earlier
+         ISO images (MD5 df7d864394ad46860984be60f2a3e448, 50ffee97f9abc37e751f36d7239caea4). The European edition
+         also needs the Mac CD above.
+  The 2.04b3 patch (a .sea.sit) is no longer needed: the data tables the build reads come from the CD's own program.
+  If it is among the downloads it is named and left alone.
 
 and unpacked into WORK/extracted as
 
   disc-hfs/Theme Park Data/                      the CD's game folder: each file's data fork as the file itself, its
                                                  resource fork as NAME.rsrc (when it has one) and its type and creator
                                                  as NAME.finfo ("TYPE<tab>CREATOR"); --whole-disc writes the rest of
-                                                 the disc beside it (manuals, installers, extras), which nothing reads
-  SimTPPatch_204b3/Sim Theme Park Patch/         the patch: "patch 2.04b3/SimTheme Park" (the program the build reads
-                                                 its data tables from) and its libraries, data forks only
+                                                 the disc beside it (manuals, installers, extras), which nothing reads.
+                                                 "Theme Park Data/SimTheme Park" is the program the build reads its
+                                                 data tables from.
   Theme_Park_World_Bonus_Stuff/Theme Park World Bonus Stuff/tpwfnt/
                                                  the bonus fonts, when the bonus zip is there
-  tpw-eur/Theme Park Data/                       the Theme Park World edition's game folder, when the UK ISO is there
-                                                 (written by devtools/import_eur.py, which says what it holds)
+  tpw-eur/Theme Park Data/                       the Theme Park World edition's game folder, when the European PC image
+                                                 is there (written by devtools/import_eur.py, which says what it holds)
 
 which is where the build (TPW_GAME_PROGRAM's default, WORK/tpw-port/../extracted/...) and the launcher
 (--game "extracted/disc-hfs/Theme Park Data", from WORK) look. Every file written is then checked against the SHA-256
 list at the end of this script; the result is OK or the list of the files that differ.
 
-Needs Python 3.8 or later; machfs for the CD (python3 -m pip install machfs, in a virtual environment:
-python3 -m venv venv && venv/bin/python -m pip install machfs, then run this script with venv/bin/python); and unar for
-the patch (macOS: brew install unar; Debian and Ubuntu: apt install unar). Nothing is written outside --to; the work
-folder it unpacks into (--to/.import_originals-*) is deleted at the end. A folder that is already there is left alone
-unless --replace is given, which deletes and rewrites it.
+Files whose names a Windows file system cannot hold are not written and not checked: the two with a ':' in the name
+(the Mac spelled "/" that way: a shared library named "c/c++ shared") and the folder icons ("Icon" followed by a carriage
+return, with their .rsrc and .finfo). The game does not read them.
 
---check DIR checks an existing layout against the list without the downloads.
+Needs Python 3.8 or later and nothing else: the HFS reader (machfs, with macresources) is in devtools/third_party and
+is imported from there. Nothing is written outside --to; the work folder it unpacks into (--to/.import_originals-*)
+is deleted at the end. A folder that is already there is left alone unless --replace is given, which deletes and
+rewrites it.
+
+--check DIR checks an existing layout against the list without the downloads (a folder SimTPPatch_204b3 left from
+earlier imports is checked too, when it is there).
 """
 import argparse
 import hashlib
 import os
 import shutil
 import struct
-import subprocess
 import sys
 import tempfile
 import zipfile
 import importlib.util
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _lib in ("macresources", "machfs"):          # vendored, see devtools/third_party/*/NOTE.md
+    sys.path.insert(0, os.path.join(_HERE, "third_party", _lib))
 
 _spec = importlib.util.spec_from_file_location("import_eur", os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                                           "import_eur.py"))
@@ -60,7 +71,7 @@ ORIGINALS = [
     ("cd", "f03abce3f375bc72d863cc527749e645", 588983335,
      "the SimTheme Park Mac US CD image 2.0.1 (a zip holding \"Theme Park.toast\")", True),
     ("patch", "23bcbf4d6d6aec0b5ab00d47840b3f63", 2090425,
-     "the SimTheme Park Mac 2.04b3 patch (a .sea.sit)", True),
+     "the SimTheme Park Mac 2.04b3 patch (a .sea.sit; not needed)", False),
     ("bonus", "1adeba0b0cf5edcc623d44181a321f28", 6687662,
      "Theme Park World Bonus Stuff (a zip; optional, its fonts serve only the platform tests)", False),
 ] + import_eur.EUR_ISOS
@@ -68,11 +79,16 @@ ORIGINALS = [
 DISC = "disc-hfs"
 GAME_FOLDER = "Theme Park Data"
 PATCH = "SimTPPatch_204b3"
-PATCH_FOLDER = "Sim Theme Park Patch"
+PATCH_FOLDER = "Sim Theme Park Patch"      # only a layout from earlier imports has it (--check)
 BONUS = "Theme_Park_World_Bonus_Stuff"
 BONUS_FOLDER = "Theme Park World Bonus Stuff"
 FONTS = BONUS_FOLDER + "/tpwfnt"
-APPLEDOUBLE = b"\x00\x05\x16\x07"
+
+
+def portable(name):
+    """Whether NAME (one path component, or a whole relative path) can be a file name on Windows as well: the Mac's
+    '/' is written ':' by earlier imports, and the folder icon files are called "Icon" and a carriage return."""
+    return ":" not in name and "\r" not in name
 
 
 def fail(msg):
@@ -102,6 +118,9 @@ def find_originals(root):
                 size = os.path.getsize(path)
             except OSError:
                 continue
+            for r_md5, r_size, why in import_eur.REFUSED:
+                if size == r_size and md5_of(path) == r_md5:
+                    print("refused %s: %s" % (path, why))
             if size not in by_size or rank_of.get(by_size[size][0], len(ORIGINALS)) <= by_size[size][2]:
                 continue
             key, md5, rank = by_size[size]
@@ -110,7 +129,9 @@ def find_originals(root):
             else:
                 damaged.append(path)
     for rank, (key, md5, size, what, required) in enumerate(ORIGINALS):
-        if rank_of.get(key) == rank:
+        if rank_of.get(key) == rank and key == "patch":
+            print("found %-5s %s: %s (not needed, ignored: patches only replaced the game program, which the port translates from 2.04b3)" % (key, md5, found[key]))
+        elif rank_of.get(key) == rank:
             print("found %-5s %s: %s" % (key, md5, found[key]))
         elif key not in found:
             print("%s %-5s %s (%d bytes): %s" % ("MISSING" if required else "missing", key, md5, size, what))
@@ -165,19 +186,13 @@ def find_hfs(image):
 
 
 def _safe(part):
-    """hfsdump's name rule: a '/' in an HFS name is written as ':' (the Mac's own spelling of it on a POSIX volume)."""
-    part = part.replace("/", ":") or "_"
-    if part in (".", ".."):
+    if part in (".", "..", ""):
         fail("an HFS name %r cannot be written as a file name" % part)
     return part
 
 
 def unpack_cd(zip_path, stage, whole):
-    try:
-        import machfs
-    except ImportError:
-        fail("the CD needs machfs: python3 -m pip install machfs (in a virtual environment: python3 -m venv venv && "
-             "venv/bin/python -m pip install machfs, then run this script with venv/bin/python)")
+    import machfs                                       # devtools/third_party/machfs
     image = read_toast(zip_path)
     start, length, where = find_hfs(image)
     vn = start + 1024 + 36                              # drVN, a Pascal string
@@ -187,9 +202,12 @@ def unpack_cd(zip_path, stage, whole):
     vol.read(memoryview(image)[start:start + length])
     del image
     out = os.path.join(stage, DISC)
-    n = 0
+    n = skipped = 0
     for path, obj in vol.iter_paths():
         if not isinstance(obj, machfs.File) or not (whole or path[0] == GAME_FOLDER):
+            continue
+        if not all(portable(p.replace("/", ":")) for p in path):
+            skipped += 1
             continue
         dst = os.path.join(out, *[_safe(p) for p in path])
         os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -203,36 +221,8 @@ def unpack_cd(zip_path, stage, whole):
         n += 1
     if not n:
         fail("the CD's HFS volume has no \"%s\" folder" % GAME_FOLDER)
-    print("CD: %d files written (data forks, with their .rsrc and .finfo)" % n)
-
-
-# ---- the patch: StuffIt 5, unpacked by unar
-
-def unpack_patch(sit_path, stage):
-    unar = shutil.which("unar")
-    if not unar:
-        fail("the patch needs unar (macOS: brew install unar; Debian and Ubuntu: apt install unar)")
-    work = os.path.join(stage, "unar")
-    os.makedirs(work)
-    # The resource forks go to AppleDouble files "NAME.rsrc", which are then deleted ("-k skip" fails on this archive).
-    r = subprocess.run([unar, "-q", "-f", "-D", "-k", "visible", "-o", work, sit_path], capture_output=True, text=True)
-    if r.returncode:
-        fail("unar could not unpack the patch: %s" % (r.stderr.strip() or r.stdout.strip()))
-    src = os.path.join(work, PATCH_FOLDER)
-    if not os.path.isdir(src):
-        fail("the patch archive does not hold a \"%s\" folder (unar wrote: %s)" % (PATCH_FOLDER, os.listdir(work)))
-    for folder, _, files in os.walk(src):
-        for name in files:
-            path = os.path.join(folder, name)
-            if name.endswith(".rsrc"):
-                with open(path, "rb") as f:
-                    if f.read(4) != APPLEDOUBLE:
-                        fail("unar wrote %s, which is not an AppleDouble resource fork" % path)
-                os.remove(path)
-    os.makedirs(os.path.join(stage, PATCH))
-    os.rename(src, os.path.join(stage, PATCH, PATCH_FOLDER))
-    shutil.rmtree(work)
-    print("patch: unpacked (data forks)")
+    print("CD: %d files written (data forks, with their .rsrc and .finfo); %d not written (names Windows cannot hold)"
+          % (n, skipped))
 
 
 # ---- the bonus fonts
@@ -270,7 +260,7 @@ def expected(groups):
             continue
         sha, size, name = line.split(" ", 2)
         path = folder + name
-        if group_of(path) in groups:
+        if group_of(path) in groups and portable(path):
             out[path] = (int(size), sha)
     return out
 
@@ -292,10 +282,10 @@ def tree_root(group):
             "bonus": BONUS + "/" + FONTS}[group]
 
 
-def groups_of(whole, bonus):
-    """(the list's groups to check, the folders written): the disc's game folder or all of the disc, the patch, the
-    bonus fonts."""
-    groups = ["game"] + (["disc"] if whole else []) + ["patch"] + (["bonus"] if bonus else [])
+def groups_of(whole, bonus, patch=False):
+    """(the list's groups to check, the folders written): the disc's game folder or all of the disc, the bonus fonts,
+    and the patch when an earlier import's folder is there (an import no longer writes it)."""
+    groups = ["game"] + (["disc"] if whole else []) + (["bonus"] if bonus else []) + (["patch"] if patch else [])
     return groups, [tree_root(g) for g in groups if not (whole and g == "game")]
 
 
@@ -320,7 +310,7 @@ def check(top, groups):
     want = expected(groups)
     have = set()
     for g in groups:
-        have.update(p for p in files_under(top, tree_root(g)) if group_of(p) in groups)
+        have.update(p for p in files_under(top, tree_root(g)) if group_of(p) in groups and portable(p))
     bad = []
     for path in sorted(want):
         size, sha = want[path]
@@ -333,7 +323,7 @@ def check(top, groups):
             bad.append("contents differ: " + path)
     for path in sorted(have - set(want)):
         bad.append("not in the list: " + path)
-    names = ", ".join(groups_of("disc" in groups, "bonus" in groups)[1])
+    names = ", ".join(groups_of("disc" in groups, "bonus" in groups, "patch" in groups)[1])
     if bad:
         print("CHECK FAILED: %d of %d files (%s):" % (len(bad), len(want), names))
         for b in bad[:60]:
@@ -386,7 +376,8 @@ def main(argv):
         make_list(a.make_list)
         return 0
     if a.check:
-        groups, _ = groups_of(a.whole_disc, os.path.isdir(os.path.join(a.check, tree_root("bonus"))))
+        groups, _ = groups_of(a.whole_disc, os.path.isdir(os.path.join(a.check, tree_root("bonus"))),
+                              os.path.isdir(os.path.join(a.check, tree_root("patch"))))
         ok = check(a.check, groups)
         if os.path.isdir(os.path.join(a.check, import_eur.EDITION)):
             ok = check_eur(a.check) and ok
@@ -408,7 +399,6 @@ def main(argv):
     stage = tempfile.mkdtemp(prefix=".import_originals-", dir=a.to)
     try:
         unpack_cd(found["cd"], stage, a.whole_disc)
-        unpack_patch(found["patch"], stage)
         if "bonus" in found:
             unpack_bonus(found["bonus"], stage)
         for t in targets:

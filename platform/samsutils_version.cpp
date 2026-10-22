@@ -3,9 +3,9 @@
 // build has no resource fork, so the default version resource answers the game's own version.
 //
 // Where the version comes from. The 'vers' resources of the game's data disc (extracted/disc-hfs/Theme Park Data/SimTheme Park.rsrc:
-// number 1 is "2.0.1", number 2 "SimTheme Park 2.0.1") belong to the release build, and the 2.04b3 patch
-// (extracted/SimTPPatch_204b3/Sim Theme Park Patch/patch 2.04b3/SimTheme Park) ships the program's data fork only, so the text of the
-// patched program's resource is not available: it is taken to be "2.04b3", the name of the patch the translated code comes from.
+// number 1 is "2.0.1", number 2 "SimTheme Park 2.0.1") belong to the release build, and the 2.04b3 patch ships the program's data
+// fork only, so the text of the patched program's resource is not available: it is taken to be "2.04b3", the name of the patch the
+// translated code comes from.
 #include <cstdlib>
 #include <cstring>
 
