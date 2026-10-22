@@ -7,6 +7,7 @@
 
 #include "platform.h"
 #include "platform/ltms.h"
+#include "WinScrn.h"
 
 namespace tpw {
 
@@ -52,6 +53,13 @@ namespace NS_MacDoze {
 
 int32_t MessageBoxW(GrafPort*, const char16_t* text, const char16_t* title, uint32_t flags) {
     tpw::Log("%s", tpw::MessageBoxLine(text, title, flags).c_str());
+    return 1;   // IDOK
+}
+
+// macdoze 0x1000687c, MessageBoxA: the Mac shows a UDialog and answers the button pressed; here the title and the text go
+// to the log, like MessageBoxW's, and the answer is IDOK.
+int32_t MessageBoxA(GrafPort*, const char* text, const char* caption, uint32_t flags) {
+    tpw::Log("message box \"%s\": %s (flags 0x%x)", caption != nullptr ? caption : "(null)", text != nullptr ? text : "(null)", flags);
     return 1;   // IDOK
 }
 

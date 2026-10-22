@@ -538,6 +538,40 @@ int32_t MoveWindow(GrafPort* window, int32_t x, int32_t y, int32_t width, int32_
     return 1;
 }
 
+// macdoze 0x10000f74: SizeWindow (flag 1 clear), MoveWindow (flag 2 clear), then the order (flags 0x94 clear): 1 sends
+// the window to the back, 0 to -2 (HWND_TOP, TOPMOST, NOTOPMOST) brings it to the front, any other window is swapped
+// with it (no host equivalent: the game has one window). Flag 0x80 hides it. Always answers 1. The sizing and the
+// position follow MoveWindow's rules (the fit re-fits to the new resolution and leaves the window where it is).
+int32_t SetWindowPos(GrafPort* window, GrafPort* after, int32_t x, int32_t y, int32_t width, int32_t height,
+                     uint32_t flags) {
+    if (window != &gWindow || !gWindowMade) return 0;
+    if ((flags & 1) == 0) {
+        if (gFit.wanted) {
+            tpw::SetGameSize(width, height);
+        } else {
+            SDL_SetWindowSize(gWindow.sdl, width, height);
+            SetPortRect(width, height);
+        }
+    }
+    if ((flags & 2) == 0 && !gFit.wanted) {
+        SDL_SetWindowPosition(gWindow.sdl, x, y);
+        SDL_SyncWindow(gWindow.sdl);
+    }
+    if ((flags & 0x94) == 0) {
+        const intptr_t order = reinterpret_cast<intptr_t>(after);
+        if (order == 1) {
+            SendWindowToBack();
+        } else if (order <= 0 && order > -3) {
+            if (!tpw::config().background) SDL_RaiseWindow(gWindow.sdl);
+        }
+    }
+    if ((flags & 0x80) != 0) {
+        SDL_HideWindow(gWindow.sdl);
+        gWindow.visible = false;
+    }
+    return 1;
+}
+
 int32_t ScreenToClient(GrafPort*, tagPOINT* point) {
     int32_t x, y;
     tpw::WindowOrigin(x, y);
