@@ -20,6 +20,14 @@ enum class WindowOutcome {
 struct WindowPlacement {
     SDL_DisplayID display = 0;
     bool background = false;
+    // A test run (the launcher's --frames, --dump-frames, --dump-every and --dump-limit, as the game's window has
+    // them): quit with Quit after this many drawn frames (0: never), and save the drawn frames as frame-NNNN.bmp in
+    // dumpDir (empty: none), each one that differs from the one before it, every dumpEvery'th of those, at most
+    // dumpLimit pictures.
+    int maxFrames = 0;
+    std::string dumpDir;
+    int dumpEvery = 1;
+    int dumpLimit = 200;
 };
 
 // Initialises SDL's video subsystem if it is not yet, and leaves it initialised.

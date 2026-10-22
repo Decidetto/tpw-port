@@ -7,8 +7,12 @@
 
 namespace tpw::ui {
 
-// The product's working name, in one place so it can be renamed.
-inline constexpr const char* kProductName = "Midway";
+// The product's name as the player reads it (window title, home screen wordmark, About, --help), in one place so it can
+// be renamed. The per-user data folder cannot hold a slash, so it has its own name just below.
+inline constexpr const char* kProductName = "STP/TPW Launcher";
+// The product name for the per-user data folder (SDL_GetPrefPath's application name; on macOS
+// ~/Library/Application Support/STP-TPW Launcher). The same words without the slash.
+inline constexpr const char* kDataFolderName = "STP-TPW Launcher";
 // How the games are mentioned: descriptively, never as a logo (launcher-design section 5, "Trademark naming").
 inline constexpr const char* kTagline =
     "An unofficial port for playing your own copy of Theme Park World (PC) and SimTheme Park (Mac).";

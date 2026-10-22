@@ -157,7 +157,7 @@ void Usage(const char* program) {
                  "                 verified files, the saves and launcher.ini are kept in the data folder (below)\n"
                  "  --play E       without the window: start edition E (us or eur) from the data folder, as Play does\n"
                  "  --data DIR     the folder launcher.ini is in (default: the per-user folder SDL names for the\n"
-                 "                 launcher, such as ~/Library/Application Support/Midway on a Mac)\n"
+                 "                 launcher, such as ~/Library/Application Support/STP-TPW Launcher on a Mac)\n"
                  "  --program FILE the game's data tables are read from this full Mac \"SimTheme Park\" or \"Theme Park\n"
                  "                 World\" application (its data fork; the CD's 2.0.1, the 2.04b3 patch's or a 2.1 release)\n"
                  "                 (default: $TPW_GAME_PROGRAM, else \"SimTheme Park\" in the game folder)\n"
@@ -179,7 +179,7 @@ void Usage(const char* program) {
                  "                 and the 4:3 screens are pillarboxed. --aspect 4:3 is the original layout exactly, at\n"
                  "                 the 4:3 size\n"
                  "  --no-intro     skip the logo, the intro movie and the lobby: straight into a park\n"
-                 "  --frames N     stop after N passes of the main loop\n"
+                 "  --frames N     stop after N passes of the main loop (the launcher's own window: after N drawn frames, exit 0)\n"
                  "  --click X,Y@N  a scripted left click at game pixel (X, Y): pressed on pass N, released on pass N+1\n"
                  "                 (repeatable; the pointer stays there until the real mouse moves)\n"
                  "  --drag X0,Y0-X1,Y1@N[/K]  a scripted left drag: the pointer to (X0, Y0) on pass N, the button down on\n"
@@ -195,7 +195,7 @@ void Usage(const char* program) {
                  "  --background   open the window behind the others, without taking the focus or moving the mouse\n"
                  "                 (a test run on a screen someone is working on; a click focuses it as usual)\n"
                  "  --dump-frames DIR  save the presented frames there as frame-NNNN.bmp (each one that differs from\n"
-                 "                     the frame before it; the first 200)\n"
+                 "                     the frame before it; the first 200; the launcher's own window too)\n"
                  "  --dump-every N     with --dump-frames: save only every Nth of those frames\n"
 
                  "  --stub-abort   abort at the first unimplemented function (for a debugger)\n"
@@ -206,21 +206,30 @@ void Usage(const char* program) {
 // ---- the launcher's window and its data folder (launcher-design section 4: assets/{us,eur,gold}, saves/{us,eur},
 // launcher.ini)
 
-// Copies an edition's saves from the folder earlier builds used (SDL's pref path for "tpw-decomp", "Theme Park World"
-// or "Theme Park World UK") into the data folder's saves/us or saves/eur, once: only while that folder does not exist
-// yet. The old folder is left as it was. SDL's pref path is <base>/<app>/ without an organisation and
-// <base>/<org>/<app>/ with one, on every system, so the old folder is found beside the launcher's own.
+// Copies an edition's saves from the folder earlier builds used into the data folder's saves/us or saves/eur, once:
+// only while that folder does not exist yet. The folders looked at, in this order, are SDL's pref path for
+// "tpw-decomp" ("Theme Park World" or "Theme Park World UK") and the data folder this launcher was first called
+// "Midway" (its saves/us or saves/eur); the first one that exists is used. The old folder is left as it was. SDL's pref
+// path is <base>/<app>/ without an organisation and <base>/<org>/<app>/ with one, on every system, so the old folders
+// are found beside the launcher's own.
 void AdoptOldSaves(const std::filesystem::path& prefPath, const std::filesystem::path& saves, bool us) {
     std::error_code ec;
     if (std::filesystem::exists(saves, ec)) return;
     std::filesystem::path base = prefPath;
     if (!base.has_filename()) base = base.parent_path();   // the pref path ends in a separator
-    const std::filesystem::path old = base.parent_path() / "tpw-decomp" / (us ? "Theme Park World" : "Theme Park World UK");
-    if (!std::filesystem::is_directory(old, ec)) return;
-    std::filesystem::create_directories(saves.parent_path(), ec);
-    std::filesystem::copy(old, saves, std::filesystem::copy_options::recursive, ec);
-    if (ec) tpw::Log("saves: could not copy \"%s\" to \"%s\": %s", old.string().c_str(), saves.string().c_str(), ec.message().c_str());
-    else tpw::Log("saves: copied from \"%s\" (the folder earlier builds used; it is left as it was)", old.string().c_str());
+    const std::filesystem::path parent = base.parent_path();
+    const std::filesystem::path candidates[] = {
+        parent / "tpw-decomp" / (us ? "Theme Park World" : "Theme Park World UK"),
+        parent / "Midway" / "saves" / (us ? "us" : "eur"),
+    };
+    for (const std::filesystem::path& old : candidates) {
+        if (!std::filesystem::is_directory(old, ec)) continue;
+        std::filesystem::create_directories(saves.parent_path(), ec);
+        std::filesystem::copy(old, saves, std::filesystem::copy_options::recursive, ec);
+        if (ec) tpw::Log("saves: could not copy \"%s\" to \"%s\": %s", old.string().c_str(), saves.string().c_str(), ec.message().c_str());
+        else tpw::Log("saves: copied from \"%s\" (the folder earlier builds used; it is left as it was)", old.string().c_str());
+        return;
+    }
 }
 
 // No --game: the edition comes from the data folder, through the launcher's window or --play. Fills in the game
@@ -230,7 +239,7 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
                          const std::string& play) {
     std::string prefPath = dataDir;
     if (prefPath.empty()) {
-        char* pref = SDL_GetPrefPath("", tpw::ui::kProductName);
+        char* pref = SDL_GetPrefPath("", tpw::ui::kDataFolderName);
         if (pref == nullptr) {
             std::fprintf(stderr, "launcher: no per-user folder for the launcher's data: %s\n", SDL_GetError());
             return 1;
@@ -265,6 +274,10 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
         // The window opens where the game's would: on the --display screen, behind the others with --background.
         tpw::ui::WindowPlacement placement;
         placement.background = config.background;
+        placement.maxFrames = config.maxFrames;   // --frames, --dump-frames, --dump-every, --dump-limit: the window's too
+        placement.dumpDir = config.dumpFramesDir.string();
+        placement.dumpEvery = config.dumpEvery;
+        placement.dumpLimit = config.dumpLimit;
         if (!config.display.empty()) {
             if (config.background) {   // before SDL's video starts, as the game's window sets them
                 SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");

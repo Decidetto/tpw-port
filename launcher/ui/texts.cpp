@@ -150,6 +150,7 @@ ResultText DescribeResult(const ImportReport& report, const EditionStatus before
         return r;
     }
 
+    bool errorShown = false;
     std::vector<std::string> unlockedNow;
     for (int i = 0; i < 3; ++i)
         if (!before[i].unlocked && after[i].unlocked) unlockedNow.push_back(EditionPhrase(kEditions[i]));
@@ -164,6 +165,11 @@ ResultText DescribeResult(const ImportReport& report, const EditionStatus before
     } else if (!unlockedNow.empty()) {
         r.headline = "All assets confirmed for " + JoinAnd(unlockedNow);
         r.good = true;
+    } else if (report.written == 0 && !report.errors.empty()) {
+        // A damaged or unreadable drop must not read as "nothing new": name the file and the reason first.
+        r.headline = report.errors.size() == 1 ? "A file could not be read" : "Some files could not be read";
+        r.lines.push_back(report.errors.front());
+        errorShown = true;
     } else if (report.written == 0 && report.alreadyThere > 0) {
         r.headline = "Nothing new: these files were already in place";
         r.good = true;
@@ -203,7 +209,9 @@ ResultText DescribeResult(const ImportReport& report, const EditionStatus before
         r.lines.push_back(Files(report.differentVersions.size()) + " of a different version (not used)");
     if (report.unknownFiles)
         r.lines.push_back(Files(report.unknownFiles) + " not part of either game (not used)");
-    if (!report.errors.empty()) {
+    if (errorShown) {
+        if (report.errors.size() > 1) r.lines.push_back(FormatCount(report.errors.size()) + " problems in all");
+    } else if (!report.errors.empty()) {
         const char* joint = report.errors.size() == 1 ? " problem: " : " problems, the first: ";
         r.lines.push_back(FormatCount(report.errors.size()) + joint + report.errors.front());
     }

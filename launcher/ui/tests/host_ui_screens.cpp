@@ -220,7 +220,7 @@ public:
         s.unlocked = s.required > 0 && s.requiredPresent == s.required;
         return s;
     }
-    std::string DataFolder() const override { return "/home/player/.local/share/" + std::string(kProductName); }
+    std::string DataFolder() const override { return "/home/player/.local/share/" + std::string(kDataFolderName); }
     bool ChangeDataFolder(const std::string&, std::string& err) override {
         err = "not in the test";
         return false;
@@ -600,6 +600,17 @@ std::vector<Shot> Shots() {
                      },
                      Screen::Result});
 
+    shots.push_back({"19-result-damaged", metric::kStartWidth, metric::kStartHeight, nullptr,
+                     [](LauncherUi& ui, FakeBackend& b, const std::function<void(int)>&) {
+                         FakeBackend::Script s;
+                         s.finish = [](FakeBackend&, ImportReport& r) {
+                             r.errors.push_back("Mac CD.zip/damaged.dat: zip: checksum mismatch in damaged.dat");
+                         };
+                         b.Queue(s);
+                         ui.OfferPaths({"/media/Mac CD.zip"});
+                     },
+                     Screen::Result});
+
     shots.push_back({"18-play-wide", 1100, 760, PartialUsEur,
                      [](LauncherUi& ui, FakeBackend&, const std::function<void(int)>&) {
                          ui.ShowScreen(LauncherUi::Screen::Play);
@@ -661,6 +672,22 @@ void CheckTexts() {
     Check(full.unlocked, "a full European folder unlocks");
     CheckEq(DescribeTile(full).state, "Ready to play", "unlocked tile state");
     CheckEq(DescribeTile(full).detail, Files(full.filesPresent) + " confirmed", "unlocked tile detail");
+
+    // a damaged container: the result names the file and the reason, and is not "nothing new"
+    ImportReport damaged;
+    damaged.errors.push_back("Mac CD.zip/damaged.dat: zip: checksum mismatch in damaged.dat");
+    for (int i = 0; i < 3; ++i) damaged.status[i] = before[i];
+    ResultText dr = DescribeResult(damaged, before);
+    CheckEq(dr.headline, "A file could not be read", "damaged container headline");
+    Check(!dr.good && !dr.lines.empty() && dr.lines.front() == damaged.errors.front(), "damaged container names the file and the reason");
+    damaged.alreadyThere = 5;
+    Check(DescribeResult(damaged, before).headline == "A file could not be read", "an error beats \"nothing new\"");
+    damaged.errors.push_back("second.zip: zip: bad deflate data in x");
+    ResultText two = DescribeResult(damaged, before);
+    CheckEq(two.headline, "Some files could not be read", "several damaged containers headline");
+    bool counted = false;
+    for (const std::string& line : two.lines) counted = counted || line == "2 problems in all";
+    Check(counted, "the count of problems is shown");
 
     LogRow row;
     ImportProgress hashing;

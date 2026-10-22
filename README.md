@@ -68,8 +68,8 @@ CD (manuals, installers, extras), which nothing reads. The result:
 
 The simplest way to play is to run build/tpw_launcher with no options. Its window asks for your discs: drop the US Mac
 CD (or its zip or image) on it, plus the PC CD for the European edition. Every file is checked against the SHA-256 list
-and copied into the launcher's data folder (on macOS ~/Library/Application Support/Midway), which also holds the saves.
-Press Play. `tpw_launcher --play us` (or eur) starts an edition from that folder without the window. The extracted
+and copied into the launcher's data folder (on macOS ~/Library/Application Support/STP-TPW Launcher), which also holds
+the saves. Press Play. `tpw_launcher --play us` (or eur) starts an edition from that folder without the window. The extracted
 folders above still work: from WORK, `build/tpw_launcher --game "extracted/disc-hfs/Theme Park Data"` (or
 devtools/run_launcher.sh, below).
 
