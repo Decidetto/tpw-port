@@ -6,8 +6,9 @@
 #include "TPMain.h"
 #include "TPMovie.h"
 
-// TPW_PORT_FIX v5L26 MOVIE_Play | Mac: the film spans the screen's width | Port: on a screen wider than 4:3 it spans the 4:3 width in the middle | Why: a widescreen port; the 4:3 films are pillarboxed rather than stretched
+// TPW_PORT_FIX wfilm1 MOVIE_Play | Mac: the film spans the screen's width, 352/480 of its height high, 64/480 down | Port: on a screen wider than 4:3 the 640 x 352 picture fills the screen (centred, a little cropped) or, when that would crop more than 15 percent, fits inside it (include/platform/filmbox.h) | Why: a widescreen port; the film no longer sits in a box with bars on all four sides
 #include "UI_Base.h"
+#include "platform/filmbox.h"
 
 // The movie player's range of the main app (SimTheme Park 2.04b3; the inventory files it
 // under rsse.cpp): MOVIE_Play 0x100b9914, MOVIE_Tick 0x100b9bcc, MOVIE_Stop 0x100b9c48,
@@ -48,10 +49,20 @@ int32_t MOVIE_Play(const char* path, GrafPort* window, int32_t x, int32_t y, int
     ShowWindow(window);
     ValidRect(&box);
     SetMovieGWorld(gMovie, window, GetGWorldDevice(window));
-    const int32_t filmWidth = gUIUnitWidth > 0x800 ? UI_PillarboxWidth(gScreenHeight) : gScreenWidth;
-    x += gUIUnitWidth > 0x800 ? UI_PillarboxLeft(gScreenWidth, gScreenHeight) : 0;
-    SamsUtilities::URectangleMac place(x, y, x + filmWidth,
-                                       y + static_cast<int32_t>(static_cast<uint32_t>(gScreenHeight * 0x160) / 0x1e0));
+    // On a screen wider than 4:3 (gUIUnitWidth past 0x800) the film's box is the helper's. The callers' x and y are the
+    // window's origin (in screen coordinates, which ToLocal takes off again) and, in y, the letterbox offset MovieTop()
+    // (gScreenHeight * 64 / 480); the box places itself, so only the origin is kept. Otherwise the Mac's box.
+    int32_t left = x, right = x + gScreenWidth;
+    int32_t top = y, bottom = y + static_cast<int32_t>(static_cast<uint32_t>(gScreenHeight * 0x160) / 0x1e0);
+    if (gUIUnitWidth > 0x800) {
+        const FilmBox film = FilmBoxFor(gScreenWidth, gScreenHeight);
+        const int32_t origin = y - static_cast<int32_t>((static_cast<uint32_t>(gScreenHeight) << 6) / 480);
+        left = x + film.left;
+        right = x + film.right;
+        top = origin + film.top;
+        bottom = origin + film.bottom;
+    }
+    SamsUtilities::URectangleMac place(left, top, right, bottom);
     place.ToLocal(window);
     SetMovieBox(gMovie, place);
     SetMovieVolume(gMovie, static_cast<int16_t>(gMovieVolume));

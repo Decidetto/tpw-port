@@ -206,7 +206,12 @@ void Present(const MovieRecord& m, const Picture& picture) {
     glPixelStorei(0x0CF2, 0);          // GL_UNPACK_ROW_LENGTH
     glPixelStorei(0x0CF3, 0);          // GL_UNPACK_SKIP_ROWS
     glPixelStorei(0x0CF4, 0);          // GL_UNPACK_SKIP_PIXELS
-    // Rows go downwards from the box's top edge (a window position is valid anywhere).
+    // Rows go downwards from the box's top edge (a window position is valid anywhere). A box larger than the window, or
+    // with a negative left or top (a widescreen film that fills the window and crops its overflow, src/game/Movie.cpp),
+    // needs nothing more: glWindowPos2i sets the raster position valid wherever it lies (OpenGL 2.1 section 2.18 and
+    // ARB_window_pos, unlike glRasterPos, which is invalid outside the clip volume), glDrawPixels then makes a fragment
+    // for each pixel of the picture (section 3.6.4), and those outside the window fail the pixel ownership test
+    // (section 4.1.1), so only the visible part is written.
     glWindowPos2i(x, windowHeight - top);
     glPixelZoom(1.0f, -1.0f);
     glDrawPixels(picture.width, picture.height, 0x1907 /*RGB*/, 0x1401 /*UNSIGNED_BYTE*/, picture.rgb.data());

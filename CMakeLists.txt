@@ -160,6 +160,11 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
   tpw_slice(TARGET tpw_platform_tests NAME platform_tests KEEP ${TPW_PLATFORM_TESTS_KEEP})
   target_link_libraries(tpw_platform_tests PRIVATE tpw_platform)
   add_test(NAME platform COMMAND tpw_platform_tests)
+
+  # Where the intro films are drawn (include/platform/filmbox.h): pure arithmetic, no game or window.
+  add_executable(tpw_host_filmbox tests/host_filmbox.cpp)
+  target_include_directories(tpw_host_filmbox PRIVATE ${TPW_INCLUDE_DIR})
+  add_test(NAME filmbox COMMAND tpw_host_filmbox)
 else()
   message(STATUS "tpw: launcher not built (needs OpenGL and Python 3)")
 endif()
