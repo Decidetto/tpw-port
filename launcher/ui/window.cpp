@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <vector>
 
 #include "theme.h"
@@ -34,7 +35,8 @@ public:
             std::memcpy(&bytes[rowBytes * static_cast<size_t>(row)], static_cast<const uint8_t*>(rgb->pixels) + static_cast<size_t>(row) * rgb->pitch, rowBytes);
         if (bytes != last_ && seen_++ % every_ == 0) {
             char name[32];
-            std::snprintf(name, sizeof name, "frame-%04d.bmp", count_++);
+            // (launcher-: the game's own frames, dumped to the same folder after Play, are frame-NNNN.bmp)
+            std::snprintf(name, sizeof name, "launcher-frame-%04d.bmp", count_++);
             std::error_code ec;
             std::filesystem::create_directories(dir_, ec);
             if (SDL_SaveBMP(rgb, (std::filesystem::path(dir_) / name).string().c_str()))
@@ -46,6 +48,8 @@ public:
         SDL_DestroySurface(rgb);
     }
     void NextFrame() { ++frames_; }
+    // From now on every differing frame (the Starting screen's: there are few, and they are what the player sees).
+    void EveryFrame() { every_ = 1; }
 
 private:
     std::string dir_;
@@ -53,6 +57,92 @@ private:
     int count_ = 0, seen_ = 0, frames_ = 0;
     std::vector<uint8_t> last_;
 };
+
+// The window left open on Play, for the Starting screen (DrawStartingWindow, CloseStartingWindow).
+struct Kept {
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
+    SDL_Texture* behind = nullptr;   // the last frame before Play, under the Starting box
+    std::unique_ptr<LauncherUi> ui;
+    std::unique_ptr<FrameDumper> dumper;
+    uint64_t last = 0;
+};
+Kept* gKept = nullptr;
+
+// The frame drawn last (not yet presented), as a texture.
+SDL_Texture* TakePicture(SDL_Renderer* renderer) {
+    SDL_Surface* shot = SDL_RenderReadPixels(renderer, nullptr);
+    if (!shot) return nullptr;
+    SDL_Texture* picture = SDL_CreateTextureFromSurface(renderer, shot);
+    SDL_DestroySurface(shot);
+    return picture;
+}
+
+// The window an event is about (0: none, such as quit).
+SDL_WindowID EventWindow(const SDL_Event& e) {
+    if (e.type >= SDL_EVENT_WINDOW_FIRST && e.type <= SDL_EVENT_WINDOW_LAST) return e.window.windowID;
+    switch (e.type) {
+        case SDL_EVENT_KEY_DOWN:
+        case SDL_EVENT_KEY_UP: return e.key.windowID;
+        case SDL_EVENT_TEXT_INPUT: return e.text.windowID;
+        case SDL_EVENT_MOUSE_MOTION: return e.motion.windowID;
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP: return e.button.windowID;
+        case SDL_EVENT_MOUSE_WHEEL: return e.wheel.windowID;
+        case SDL_EVENT_DROP_BEGIN:
+        case SDL_EVENT_DROP_FILE:
+        case SDL_EVENT_DROP_TEXT:
+        case SDL_EVENT_DROP_COMPLETE:
+        case SDL_EVENT_DROP_POSITION: return e.drop.windowID;
+        default: return 0;
+    }
+}
+
+// Takes every waiting event off the queue but the ones about another window (the game's, made but not yet shown):
+// those go back, in their order. True when one taken was a quit or the launcher's window asked to close.
+bool DrainLauncherEvents(SDL_WindowID launcher) {
+    SDL_PumpEvents();
+    std::vector<SDL_Event> events(64), others;
+    bool closed = false;
+    for (int got; (got = SDL_PeepEvents(events.data(), static_cast<int>(events.size()), SDL_GETEVENT, SDL_EVENT_FIRST,
+                                        SDL_EVENT_LAST)) > 0;) {
+        for (int i = 0; i < got; ++i) {
+            const SDL_Event& e = events[static_cast<size_t>(i)];
+            const SDL_WindowID to = EventWindow(e);
+            if (to != 0 && to != launcher) others.push_back(e);
+            else if (e.type == SDL_EVENT_QUIT || (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && to == launcher))
+                closed = true;
+        }
+    }
+    if (!others.empty()) SDL_PeepEvents(others.data(), static_cast<int>(others.size()), SDL_ADDEVENT, 0, 0);
+    return closed;
+}
+
+// The scripted clicks (WindowPlacement::clicks) due before drawn frame `frame`, as the pointer's events.
+void PushClicks(SDL_Window* window, const WindowPlacement& placement, int frame) {
+    for (const WindowPlacement::Click& click : placement.clicks) {
+        if (frame != click.frame && frame != click.frame + 1) continue;
+        SDL_Event e{};
+        if (frame == click.frame) {
+            e.type = SDL_EVENT_MOUSE_MOTION;
+            e.motion.windowID = SDL_GetWindowID(window);
+            e.motion.x = click.x;
+            e.motion.y = click.y;
+            SDL_PushEvent(&e);
+            e = SDL_Event{};
+        }
+        e.type = frame == click.frame ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+        e.button.windowID = SDL_GetWindowID(window);
+        e.button.button = SDL_BUTTON_LEFT;
+        e.button.down = frame == click.frame;
+        e.button.clicks = 1;
+        e.button.x = click.x;
+        e.button.y = click.y;
+        SDL_PushEvent(&e);
+        std::fprintf(stderr, "launcher: scripted click %s at %.0f,%.0f (frame %d)\n", e.button.down ? "down" : "up",
+                     click.x, click.y, frame);
+    }
+}
 
 }  // namespace
 
@@ -88,18 +178,24 @@ WindowOutcome RunLauncherWindow(ImportBackend& backend, LaunchChoice& choice, st
     SDL_SetRenderVSync(renderer, 1);
 
     WindowOutcome outcome = WindowOutcome::Quit;
+    std::unique_ptr<LauncherUi> kept;
+    std::unique_ptr<FrameDumper> keptDumper;
+    SDL_Texture* behind = nullptr;
+    uint64_t last = SDL_GetTicksNS();
     {
-        LauncherUi ui(renderer, backend);
+        auto owned = std::make_unique<LauncherUi>(renderer, backend);
+        LauncherUi& ui = *owned;
         ui.SetWindow(window);
         if (!ui.Ok()) {
             err = ui.Error();
             outcome = WindowOutcome::Failed;
         }
-        uint64_t last = SDL_GetTicksNS();
         bool running = ui.Ok();
-        FrameDumper dumper(placement);
+        auto dumperOwned = std::make_unique<FrameDumper>(placement);
+        FrameDumper& dumper = *dumperOwned;
         int drawn = 0;
         while (running) {
+            PushClicks(window, placement, drawn + 1);
             // Rest while nothing moves; wake for events (file dialogs push one when they close).
             SDL_Event e;
             // (a counted test run does not wait long: its frames are what it is after)
@@ -119,8 +215,11 @@ WindowOutcome RunLauncherWindow(ImportBackend& backend, LaunchChoice& choice, st
             ui.Frame(std::min(dt, 0.1f), static_cast<float>(w), static_cast<float>(h), density > 0 ? density : 1);
             dumper.NextFrame();
             dumper.Dump(renderer);
+            const bool play = ui.TakePlay(choice);
+            // Play: this frame, before it is presented, is what the Starting screen dims (its backend is gone by then).
+            if (play) behind = TakePicture(renderer);
             SDL_RenderPresent(renderer);
-            if (ui.TakePlay(choice)) {
+            if (play) {
                 outcome = WindowOutcome::Play;
                 running = false;
             } else if (placement.maxFrames > 0 && ++drawn >= placement.maxFrames) {
@@ -132,10 +231,67 @@ WindowOutcome RunLauncherWindow(ImportBackend& backend, LaunchChoice& choice, st
             backend.Cancel();
             backend.Wait();
         }
+        if (outcome == WindowOutcome::Play) {
+            kept = std::move(owned);
+            keptDumper = std::move(dumperOwned);
+        }
+    }
+    if (outcome == WindowOutcome::Play) {
+        // The window stays, on the Starting screen, until the game's window is shown (CloseStartingWindow). It is drawn
+        // between the game's file reads from now on, so it never waits for the display.
+        kept->BeginStarting(choice.edition, behind);
+        keptDumper->EveryFrame();
+        SDL_SetRenderVSync(renderer, 0);
+        delete gKept;
+        gKept = new Kept{window, renderer, behind, std::move(kept), std::move(keptDumper), last};
+        std::fprintf(stderr, "launcher: Play; the window stays open on the Starting screen (renderer %s)\n",
+                     SDL_GetRendererName(renderer));
+        return outcome;
     }
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     return outcome;
+}
+
+bool DrawStartingWindow(float fraction) {
+    if (!gKept) return true;
+    // The game's OpenGL context (made with its window) is current on this thread: it stays so.
+    SDL_Window* glWindow = SDL_GL_GetCurrentWindow();
+    SDL_GLContext glContext = SDL_GL_GetCurrentContext();
+    const bool closed = DrainLauncherEvents(SDL_GetWindowID(gKept->window));
+    if (!closed) {
+        const uint64_t now = SDL_GetTicksNS();
+        const float dt = static_cast<float>(now - gKept->last) / 1e9f;
+        gKept->last = now;
+        int w = 0, h = 0;
+        SDL_GetWindowSize(gKept->window, &w, &h);
+        const float density = SDL_GetWindowPixelDensity(gKept->window);
+        gKept->ui->SetStartingProgress(fraction);
+        gKept->ui->FrameStarting(std::min(dt, 0.1f), static_cast<float>(w), static_cast<float>(h),
+                                 density > 0 ? density : 1);
+        gKept->dumper->NextFrame();
+        gKept->dumper->Dump(gKept->renderer);
+        SDL_RenderPresent(gKept->renderer);
+    }
+    if (glContext != nullptr) SDL_GL_MakeCurrent(glWindow, glContext);
+    return !closed;
+}
+
+void CloseStartingWindow() {
+    if (!gKept) return;
+    SDL_Window* glWindow = SDL_GL_GetCurrentWindow();
+    SDL_GLContext glContext = SDL_GL_GetCurrentContext();
+    const SDL_WindowID id = SDL_GetWindowID(gKept->window);
+    DrainLauncherEvents(id);
+    gKept->ui.reset();
+    if (gKept->behind) SDL_DestroyTexture(gKept->behind);
+    SDL_DestroyRenderer(gKept->renderer);
+    SDL_DestroyWindow(gKept->window);
+    delete gKept;
+    gKept = nullptr;
+    // What the window said as it went (its focus going, say) is not the game's to hear.
+    DrainLauncherEvents(id);
+    if (glContext != nullptr) SDL_GL_MakeCurrent(glWindow, glContext);
 }
 
 }  // namespace tpw::ui

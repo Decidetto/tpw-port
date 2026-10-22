@@ -45,6 +45,14 @@ public:
     // a file of an accepted size is there (what the importer counts as present). Empty or false before Open.
     std::string ProgramPath() const;
     bool HasProgram() const;
+    // The folder launcher.ini is in.
+    const std::string& PrefPath() const { return prefPath_; }
+    // One of launcher.ini's keys kept for later units (LauncherIni::extra): its value, empty when there is none.
+    std::string IniExtra(const std::string& key) const;
+    // Sets one such key (replacing its old value) in the launcher.ini of `prefPath`, straight in the file: for after the
+    // backend is gone (an open importer keeps its own copy of the file and would write it back over this).
+    static bool SaveIniExtra(const std::string& prefPath, const std::string& key, const std::string& value,
+                             std::string& err);
 
     bool Start(const std::vector<std::string>& paths, std::string& err) override;
     bool Running() const override;

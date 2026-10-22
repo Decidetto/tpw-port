@@ -19,7 +19,7 @@ build takes a few minutes. If your Mac has no CMake, `make` fetches it into the 
 folder. Nothing else is installed.
 
 `make run` opens the launcher. Drop your game disc on its window: the Mac CD, the PC CD, or a zip or disc image of
-either. The launcher checks every file and ticks off the editions it finds. Press Play.
+either. The launcher checks every file and ticks off the editions it finds. Press Play: a progress bar shows while the game starts, and the launcher's window closes when the game's window appears.
 
 ## What you need
 
@@ -108,6 +108,12 @@ From WORK, `tpw-port/build/tpw_launcher --game "extracted/disc-hfs/Theme Park Da
 `tpw_launcher --play us` (or eur) starts an edition from the launcher's data folder without its window.
 `tpw_launcher --help` lists every option.
 
+After Play the launcher's window stays open with a progress bar until the game's window appears, then it closes. While
+the window is open a thread reads ahead the game's tables and the first files of the edition last played, so that Play
+finds them in the system's file cache; `--no-preload` turns that off. The bar counts bytes: what the game read before
+its window appeared the last time is kept in the data folder's launcher.ini (startup_bytes_us, startup_bytes_eur), and
+the first start of an edition shows a moving bar without a number.
+
 ### Running from the command line
 
     tpw-port/devtools/run_launcher.sh tpw-port/build NAME SECONDS [options]
@@ -116,9 +122,10 @@ run from WORK, starts tpw-port/build/tpw_launcher with its own user folder (tpw-
 (tpw-port/build/launch-NAME.log) and quits it after SECONDS. Options: --mute, --no-movies, --windowed, --display builtin,
 --background, --launcher-window, --play us|eur and --data DIR (start from the launcher's data folder instead of
 extracted/), and the scripted input used to test it (--click X,Y@PASS, --type TEXT@PASS, --drag X0,Y0-X1,Y1@PASS,
---frames N), and --fullscreen: the game's real full-screen window on the --display screen, without --windowed or
---background; that screen is taken over until the run ends. tpw_platform_tests (cmake --build build --target
-tpw_platform_tests) checks the platform layer without a display.
+--frames N, --window-click X,Y@FRAME for the launcher's own window (in its points), and --fullscreen: the game's real
+full-screen window on the --display screen, without --windowed or --background; that screen is taken over until the
+run ends. tpw_platform_tests (cmake --build build --target tpw_platform_tests) checks the platform layer without a
+display.
 
 ### Widescreen and resolution
 

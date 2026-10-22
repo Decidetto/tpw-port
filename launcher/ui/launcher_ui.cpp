@@ -842,6 +842,7 @@ void LauncherUi::Frame(float dt, float width, float height, float scale) {
         case Screen::Checking: DrawChecking(window); break;
         case Screen::Result: DrawResult(window); break;
         case Screen::Play: DrawPlay(window); break;
+        case Screen::Starting: DrawStarting(window); break;
     }
     if (overlay) {
         tilesShown_ = false;   // drops on an open box go to the field

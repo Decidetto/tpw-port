@@ -12,6 +12,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "handoff.h"
 #include "platform.h"
 #include "platform/macdoze.h"
 
@@ -116,6 +117,7 @@ int32_t ReadFile(InternalHandle* handle, void* buffer, uint32_t count, uint32_t*
     auto* file = Find<FileHandle>(handle, Handle::kFile);
     if (file == nullptr) return 0;
     const uint32_t read = static_cast<uint32_t>(std::fread(buffer, 1, count, file->file));
+    tpw::CountStartupRead(read);   // the launcher's bar (handoff.h)
     if (done != nullptr) *done = read;
     return read == count ? 1 : 0;
 }
@@ -176,6 +178,7 @@ InternalHandle* CreateFileMapping(InternalHandle* handle, void*, uint32_t, uint3
     std::fseek(file->file, 0, SEEK_SET);
     const size_t read = mapping->bytes.empty() ? 0 : std::fread(mapping->bytes.data(), 1, mapping->bytes.size(), file->file);
     std::fseek(file->file, position, SEEK_SET);
+    tpw::CountStartupRead(read);
     if (read != mapping->bytes.size()) {
         delete mapping;
         return nullptr;
@@ -259,6 +262,7 @@ int32_t ReadFileReference(int32_t reference, uint32_t offset, void* buffer, uint
             read = 0;
         }
         funlockfile(file->file);
+        if (read > 0) tpw::CountStartupRead(static_cast<uint64_t>(read));   // any thread (the sound's too)
         return read;
     }
     return -1;

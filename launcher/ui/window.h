@@ -1,8 +1,10 @@
 // window.h: the launcher's own window: about 800 x 560 points, resizable, sharp on high-density screens, running the
-// screens of launcher_ui.h until the player presses Play or closes it. The window is gone again when this returns, so
-// the game can open its own. launcher/main.cpp opens it when no --game is given.
+// screens of launcher_ui.h until the player presses Play or closes it. Closed, it is gone when this returns; after Play it
+// stays on the Starting screen until the game's window is shown (CloseStartingWindow). launcher/main.cpp opens it when
+// no --game is given.
 #pragma once
 #include <string>
+#include <vector>
 
 #include "backend.h"
 #include "launcher_ui.h"
@@ -28,10 +30,26 @@ struct WindowPlacement {
     std::string dumpDir;
     int dumpEvery = 1;
     int dumpLimit = 200;
+    // Scripted left clicks in this window (the launcher's --window-click X,Y@F): at point (x, y) of the window, pressed
+    // before drawn frame F (from 1) and released before frame F + 1.
+    struct Click {
+        int frame;
+        float x, y;
+    };
+    std::vector<Click> clicks;
 };
 
-// Initialises SDL's video subsystem if it is not yet, and leaves it initialised.
+// Initialises SDL's video subsystem if it is not yet, and leaves it initialised. On Play the window is not closed: it
+// stays on the Starting screen (the screen it was on, dimmed, with a progress bar) until CloseStartingWindow.
 WindowOutcome RunLauncherWindow(ImportBackend& backend, LaunchChoice& choice, std::string& err,
                                 const WindowPlacement& placement = {});
+
+// After Play: draws the Starting screen once with the bar at `fraction` (-1: moving without a number), after taking every
+// waiting event off SDL's queue (the game's window is not shown yet; only the launcher window's close and quit are acted
+// on). False when the player closed the window or quit. True and nothing drawn when there is no such window (--play).
+// The OpenGL context current on the thread stays current.
+bool DrawStartingWindow(float fraction);
+// Closes the window RunLauncherWindow left open on Play (nothing when there is none).
+void CloseStartingWindow();
 
 }  // namespace tpw::ui

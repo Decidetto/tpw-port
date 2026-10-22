@@ -26,7 +26,9 @@
 #include "ResolutionBalance.h"
 #include "UI_Base.h"
 #include "platform.h"
+#include "handoff.h"
 #include "platform/game_tables.h"
+#include "startup.h"
 #include "static_init.h"
 #include "stubs.h"
 #include "ui/backend.h"
@@ -106,6 +108,9 @@ int32_t FittingPreset(int32_t preset, int limit) {
 int RunGame(int32_t resolution) {
     // What the Mac's runtime did before main (launcher/static_init.cpp).
     RunStaticInitialisers();
+    tpw::StartupStamp("static initialisers done");
+    tpw::OnStartupProgress();
+    tpw::StartupStamp("ThemeParkWorldMain entered");
     if (resolution == 0) return ThemeParkWorldMain();
     ResolutionOverrideWorld world(resolution);
     world.Run();
@@ -156,6 +161,10 @@ void Usage(const char* program) {
                  "                 either, the launcher's own window opens: drop your discs on it, then press Play; the\n"
                  "                 verified files, the saves and launcher.ini are kept in the data folder (below)\n"
                  "  --play E       without the window: start edition E (us or eur) from the data folder, as Play does\n"
+                 "  --no-preload   the launcher's window reads nothing ahead while it is open (by default it reads the\n"
+                 "                 game's tables and the first files of the edition last played, so Play starts sooner)\n"
+                 "  --window-click X,Y@F  a scripted left click in the launcher's own window at point (X, Y) of it (it\n"
+                 "                 opens 800 x 560 points), pressed before its drawn frame F and released before F + 1\n"
                  "  --data DIR     the folder launcher.ini is in (default: the per-user folder SDL names for the\n"
                  "                 launcher, such as ~/Library/Application Support/STP-TPW Launcher on a Mac)\n"
                  "  --program FILE the game's data tables are read from this full Mac \"SimTheme Park\" or \"Theme Park\n"
@@ -199,7 +208,8 @@ void Usage(const char* program) {
                  "                 screen: a full-screen Space cannot sit behind anything, so the game's window is fitted\n"
                  "                 to the screen instead, inside the menu bar and the dock\n"
                  "  --dump-frames DIR  save the presented frames there as frame-NNNN.bmp (each one that differs from\n"
-                 "                     the frame before it; the first 200; the launcher's own window too)\n"
+                 "                     the frame before it; the first 200; the launcher's own window's too, as\n"
+                 "                     launcher-frame-NNNN.bmp)\n"
                  "  --dump-every N     with --dump-frames: save only every Nth of those frames\n"
 
                  "  --stub-abort   abort at the first unimplemented function (for a debugger)\n"
@@ -274,6 +284,7 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
             return 1;
         }
         backend.SetLastChoice(tpw::assets::EditionName(choice.edition), err);
+        tpw::launcher::BeginStartup(backend, choice.edition);
     } else {
         // The window opens where the game's would: on the --display screen, behind the others with --background.
         tpw::ui::WindowPlacement placement;
@@ -282,6 +293,7 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
         placement.dumpDir = config.dumpFramesDir.string();
         placement.dumpEvery = config.dumpEvery;
         placement.dumpLimit = config.dumpLimit;
+        placement.clicks = tpw::launcher::gWindowClicks;   // --window-click
         if (!config.display.empty()) {
             if (config.background) {   // before SDL's video starts, as the game's window sets them
                 SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
@@ -290,7 +302,7 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
             // Video stays started (the window and then the game use it; display numbers hold while it runs).
             if (SDL_InitSubSystem(SDL_INIT_VIDEO)) placement.display = tpw::ChosenDisplay();
         }
-        switch (tpw::ui::RunLauncherWindow(backend, choice, err, placement)) {
+        switch (tpw::launcher::OpenLauncherWindow(backend, choice, err, placement)) {
             case tpw::ui::WindowOutcome::Quit: return 0;
             case tpw::ui::WindowOutcome::Failed:
                 std::fprintf(stderr, "launcher: the launcher's window failed: %s\n", err.c_str());
@@ -374,6 +386,17 @@ int main(int argc, char** argv) {
             }
         }
         else if (arg == "--program") program = value();
+        else if (arg == "--no-preload") tpw::launcher::gNoPreload = true;
+        else if (arg == "--window-click") {
+            const char* spec = value();
+            tpw::ui::WindowPlacement::Click click{};
+            if (std::sscanf(spec, "%f,%f@%d", &click.x, &click.y, &click.frame) != 3 || click.frame < 1) {
+                std::fprintf(stderr, "launcher: --window-click wants X,Y@F (window point and drawn frame from 1): %s\n",
+                             spec);
+                return 2;
+            }
+            tpw::launcher::gWindowClicks.push_back(click);
+        }
         else if (arg == "--user") config.userDir = value();
         else if (arg == "--edition") {
             config.edition = value();
@@ -497,7 +520,7 @@ int main(int argc, char** argv) {
     // texts) are not in the build: they come from the player's own copy of the game, before the static initialisers run.
     if (program.empty()) program = config.gameDir / "SimTheme Park";
     std::string why;
-    if (!LoadGameTables(program.string().c_str(), &why)) {
+    if (!tpw::launcher::LoadTables(program, &why)) {
         std::fprintf(stderr,
                      "launcher: the game's data tables could not be read from \"%s\": %s\n"
                      "launcher: --program (or TPW_GAME_PROGRAM) names a full Mac \"SimTheme Park\" application, such as the\n"

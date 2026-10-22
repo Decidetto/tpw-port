@@ -34,6 +34,7 @@
 #include "TbIRLE4bitFont.h"
 #include "UI_Base.h"
 #include "fit.h"
+#include "handoff.h"
 #include "gdi_text.h"
 #include "resource_fork.h"
 #include "CMpegBase.h"
@@ -2588,6 +2589,20 @@ static void TestSound(const fs::path& scratch) {
     }
 }
 
+// The launcher's bar after Play (handoff.h): bytes read against the total, no number without a total, at most 99%
+// until the game's window is shown, full once it is.
+static void TestStartupFraction() {
+    CHECK(tpw::StartupFraction(0, 0, false) == -1.0f);
+    CHECK(tpw::StartupFraction(500, 0, false) == -1.0f);
+    CHECK(tpw::StartupFraction(0, 100, false) == 0.0f);
+    CHECK(std::fabs(tpw::StartupFraction(42, 100, false) - 0.42f) < 1e-6f);
+    CHECK(std::fabs(tpw::StartupFraction(100, 100, false) - 0.99f) < 1e-6f);
+    CHECK(std::fabs(tpw::StartupFraction(150, 100, false) - 0.99f) < 1e-6f);
+    CHECK(tpw::StartupFraction(42, 100, true) == 1.0f);
+    CHECK(tpw::StartupFraction(0, 0, true) == 1.0f);
+    // Totals of the real size (a preload of about 17 MB and a start of about 0.5 MB).
+    CHECK(std::fabs(tpw::StartupFraction(8924140, 17848280, false) - 0.5f) < 1e-6f);
+}
 
 int main() {
     // One folder per process, emptied first: a run that failed leaves its folder behind.
@@ -2624,6 +2639,7 @@ int main() {
     TestFontScale();
 #endif
     TestSound(scratch);
+    TestStartupFraction();
     std::error_code ec;
     fs::remove_all(scratch, ec);
     std::printf("platform tests: %d checks passed\n", gChecks);

@@ -616,6 +616,22 @@ std::vector<Shot> Shots() {
                          ui.ShowScreen(LauncherUi::Screen::Play);
                      },
                      Screen::Play});
+    // After Play (launcher/ui/starting.cpp): the Play screen dimmed under the Starting box, with the bar at 42% of the
+    // last start's total, and with no total yet (the bar moves without a number).
+    shots.push_back({"16-starting-eur-42-percent", metric::kStartWidth, metric::kStartHeight, PartialUsEur,
+                     [](LauncherUi& ui, FakeBackend&, const std::function<void(int)>&) {
+                         ui.ShowScreen(LauncherUi::Screen::Play);
+                         ui.BeginStarting(assets::kEditionEur);
+                         ui.SetStartingProgress(0.42f);
+                     },
+                     Screen::Starting});
+    shots.push_back({"17-starting-indeterminate", metric::kStartWidth, metric::kStartHeight, PartialUsEur,
+                     [](LauncherUi& ui, FakeBackend&, const std::function<void(int)>&) {
+                         ui.ShowScreen(LauncherUi::Screen::Play);
+                         ui.BeginStarting(assets::kEditionEur);
+                         ui.SetStartingProgress(-1.0f);
+                     },
+                     Screen::Starting});
     return shots;
 }
 

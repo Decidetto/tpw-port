@@ -151,6 +151,28 @@ bool ImporterBackend::RemoveEdition(Edition edition, std::string& err) {
     return importer_->RemoveEdition(edition, err);
 }
 
+std::string ImporterBackend::IniExtra(const std::string& key) const {
+    if (!importer_) return std::string();
+    for (const auto& kv : importer_->Ini().extra)
+        if (kv.first == key) return kv.second;
+    return std::string();
+}
+
+bool ImporterBackend::SaveIniExtra(const std::string& prefPath, const std::string& key, const std::string& value,
+                                   std::string& err) {
+    const std::string path = prefPath + "/launcher.ini";
+    assets::LauncherIni ini;
+    if (!assets::LoadLauncherIni(path, ini, err)) return false;
+    bool found = false;
+    for (auto& kv : ini.extra)
+        if (kv.first == key) {
+            kv.second = value;
+            found = true;
+        }
+    if (!found) ini.extra.emplace_back(key, value);
+    return assets::SaveLauncherIni(path, ini, err);
+}
+
 std::string ImporterBackend::LastChoice() const {
     return importer_ ? importer_->Ini().lastChoice : std::string();
 }

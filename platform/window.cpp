@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "fit.h"
+#include "handoff.h"
 #include "offscreen.h"
 #include "platform.h"
 #include "platform/indirectx.h"
@@ -531,6 +532,7 @@ int32_t ShowWindow(GrafPort* window, int32_t command) {
         gWindow.visible = false;
     } else {
         SDL_ShowWindow(gWindow.sdl);
+        tpw::OnGameWindowShown();   // the launcher's window closes (platform/handoff.h)
         if (tpw::config().background) SendWindowToBack();
         else SDL_RaiseWindow(gWindow.sdl);
         gWindow.visible = true;

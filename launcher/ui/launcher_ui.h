@@ -28,7 +28,7 @@ struct LaunchChoice {
 
 class LauncherUi {
 public:
-    enum class Screen { Home, Checking, Result, Play };
+    enum class Screen { Home, Checking, Result, Play, Starting };
 
     LauncherUi(SDL_Renderer* renderer, ImportBackend& backend);
     ~LauncherUi();
@@ -49,6 +49,14 @@ public:
     bool Animating() const;
     // True once, after the Play button: the choice to start.
     bool TakePlay(LaunchChoice& out);
+    // After Play (launcher/ui/starting.cpp): the Starting screen, the screen Play was pressed on dimmed under a box with
+    // a progress bar. `behind`: a picture of that screen to show instead of drawing it again (the window's, which keeps
+    // drawing after its backend is gone); not owned, kept until the Starting screen ends.
+    void BeginStarting(assets::Edition edition, SDL_Texture* behind = nullptr);
+    // The bar's fraction of 1 (below 0: it moves without a number).
+    void SetStartingProgress(float fraction) { startingFraction_ = fraction; }
+    // One frame of the Starting screen without asking the backend anything (Frame does). Does not present.
+    void FrameStarting(float dt, float width, float height, float scale);
 
     // Paths to import, as if dropped (Browse results arrive here too).
     void OfferPaths(const std::vector<std::string>& paths);
@@ -92,6 +100,7 @@ private:
     void DrawPlay(const Rect& window);
     void DrawSettings(const Rect& window);
     void DrawAbout(const Rect& window);
+    void DrawStarting(const Rect& window);
 
     Canvas canvas_;
     Text text_;
@@ -145,6 +154,12 @@ private:
     float noticeLeft_ = 0;
 
     std::shared_ptr<DialogInbox> inbox_;
+
+    // Starting.
+    Screen startingFrom_ = Screen::Home;
+    assets::Edition startingEdition_ = assets::kEditionEur;
+    float startingFraction_ = -1;
+    SDL_Texture* startingBehind_ = nullptr;
 };
 
 }  // namespace tpw::ui
