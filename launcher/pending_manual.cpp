@@ -39,6 +39,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <unordered_set>
 #include <vector>
 #include "Wavelet.h"
 #include "tb_particle.h"
@@ -165,11 +166,19 @@ int32_t Random() {
 IME::MslWideString::MslWideString() : mData(nullptr) {}
 IME::MslWideString::~MslWideString() {}
 
+namespace {
+// The LCStrings alive (made by the constructor below), for online_callee::WStringDtor.
+std::unordered_set<LCString*>& LiveLCStrings() {
+    static std::unordered_set<LCString*> live;
+    return live;
+}
+}  // namespace
+
 // LCString (include/ui_controls.h; unit w93): the string library's constructor from wide text (0x10146a14) and assign (0x101b2510),
 // the two std::basic_string<wchar_t> instantiations the list control's AddItem and ChangeItem build and change their cells with.
 // interim: the MSL string library is not translated. The representation is the Mac's four words (length, capacity, count of users,
 // pointer to the characters), which is what UpdateDisplay reads the text through; the characters are a copy of their own. Nothing is
-// shared or freed (the library's destructor, 0x101468f8, is not called by the list control's translated code). Delete these two when a
+// shared here (the destructor, 0x101468f8, is online_callee::WStringDtor below). Delete these two when a
 // string unit lands (the duplicate-symbol link error says which).
 // Lead 2026-10-20 (v51129): assign is translated in src/game/MslSupport.cpp (through the translated
 // change_size, which keeps a representation of one user in place, as this constructor makes it); the constructor stays.
@@ -178,7 +187,36 @@ LCString::LCString(const char16_t* text) {
     while (text[length] != 0) ++length;
     mRep = new LCStringRep{static_cast<int32_t>(length), static_cast<int32_t>(length), 1, new char16_t[length + 1]};
     std::memcpy(mRep->mData, text, (length + 1) * sizeof(char16_t));
+    LiveLCStrings().insert(this);
 }
+
+// online_callee::WStringDtor, the destructor 0x101468f8 (the list control's RemoveMe calls it with the flag 1 on each cell). The
+// Mac gives up the share (a count of 0 is taken as 1); the last owner frees the characters and the representation, and a flag above
+// 0 frees the string itself. Only the LCStrings made above are taken: the other callers hold strings the string library does not
+// build yet (their constructors are not wired, so those strings are zero words or pointers of other layouts), and an address that
+// is not one of these is left alone, as the stand-in did. Delete this when a string unit lands (the duplicate-symbol link error
+// says which).
+namespace online_callee {
+void WStringDtor(void* string, int16_t flag) {
+    auto& live = LiveLCStrings();
+    auto found = live.find(static_cast<LCString*>(string));
+    if (found == live.end()) return;
+    LCString* self = *found;
+    LCStringRep* rep = self->mRep;
+    if (rep != nullptr) {
+        if (rep->mRefCount == 0) rep->mRefCount = 1;
+        if (--rep->mRefCount == 0) {
+            IME::MslDelete(rep->mData);
+            IME::MslDelete(rep);
+        }
+        self->mRep = nullptr;
+    }
+    if (flag > 0) {
+        live.erase(found);
+        delete self;
+    }
+}
+}  // namespace online_callee
 
 // 2026-10-14: w122a and w122b replaced the ten singleton thing constructor interims.
 

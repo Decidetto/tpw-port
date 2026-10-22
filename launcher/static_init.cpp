@@ -3,11 +3,11 @@
 // The Mac's runtime (__start) ran every translation unit's __sinit_X_cpp before main, in link order, which is ascending code
 // address. The translation gives each one a plain named function and nothing on the host calls it (the unit tests call theirs
 // through tpw_sinit_run), so this table does: the 123 of the main program "SimTheme Park" that analysis/function-inventory.csv
-// lists, in its address order. Each entry is one of three kinds:
+// lists, in its address order. Each entry is one of two kinds:
 //   - translated in src: called;
 //   - "host statics": the file's objects are host globals with C++ initialisers (or constant initialisers) that the host's own
-//     runtime has already run before main, so there is nothing to call; the entry keeps the place and names the file;
-//   - "not translated yet": declared and called, so the launcher's generated stand-in answers for it until a unit translates it.
+//     runtime has already run before main, so there is nothing to call; the entry keeps the place and names the file.
+// Every initialiser of the main program is translated now, so none is left to the launcher's generated stand-ins.
 // A translation that turns a "host statics" entry into a function must make its objects plain storage at the same time, or they
 // are constructed twice. __sinit_HLSprite_cpp is translated but left out for that reason: gHLSpriteLists, gESPGlobalList and
 // gESPFileInfo are host C++ globals already, and running it again cleared the lists (the weak __construct_array zeroes the array
@@ -68,7 +68,7 @@ void __sinit_keyboard_cpp();
 void __sinit_RideDB_cpp();
 void __sinit_FS_MasterSave_cpp();
 void sinit_FS_Online_cpp();
-void __sinit_FS_OnlineList_cpp();
+void sinit_FS_OnlineList_cpp();
 void __sinit_ui_main_cpp();
 void __sinit_ui_utils_cpp();
 void __sinit_ui_textmanager_cpp();
@@ -131,7 +131,7 @@ const StaticInitialiser kStaticInitialisers[] = {
     {0x10003d28, nullptr, "__sinit_FS_Registry_cpp"},  // host statics, src/game/save/FS_Registry.cpp
     {0x100051e0, nullptr, "__sinit_FS_System_cpp"},  // host statics, src/game/save/FS_System.cpp
     {0x1000757c, __sinit_3DFont_cpp, "__sinit_3DFont_cpp"},
-    {0x1000fff0, __sinit_Advisor_cpp, "__sinit_Advisor_cpp"},  // not translated yet
+    {0x1000fff0, __sinit_Advisor_cpp, "__sinit_Advisor_cpp"},
     {0x1001c34c, __sinit_AdvisorScoring_cpp, "__sinit_AdvisorScoring_cpp"},
     {0x10021074, __sinit_HoardingsBalance_cpp, "__sinit_HoardingsBalance_cpp"},
     {0x10021258, nullptr, "__sinit_MainBalance_cpp"},  // host statics, src/game/balance/MainBalance.cpp
@@ -140,10 +140,10 @@ const StaticInitialiser kStaticInitialisers[] = {
     {0x10021750, nullptr, "__sinit_SoundBalance_cpp"},  // host statics, src/game/balance/SoundBalance.cpp
     {0x1003228c, nullptr, "__sinit_TPAdvisor_cpp"},  // host statics, src/game/advisor/TPAdvisor.cpp, src/game/TPCamera.cpp
     {0x10036518, nullptr, "__sinit_TPCamera_cpp"},  // host statics, src/game/TPCamera.cpp
-    {0x100459f4, __sinit_TPCoaster_cpp, "__sinit_TPCoaster_cpp"},  // not translated yet
+    {0x100459f4, __sinit_TPCoaster_cpp, "__sinit_TPCoaster_cpp"},
     {0x100599c8, nullptr, "__sinit_TPConfig_cpp"},  // host statics, src/game/TPConfig.cpp
-    {0x1006c134, __sinit_TPRide_cpp, "__sinit_TPRide_cpp"},  // not translated yet
-    {0x1006fd80, __sinit_Debug_cpp, "__sinit_Debug_cpp"},  // not translated yet
+    {0x1006c134, __sinit_TPRide_cpp, "__sinit_TPRide_cpp"},
+    {0x1006fd80, __sinit_Debug_cpp, "__sinit_Debug_cpp"},
     {0x1007d53c, nullptr, "__sinit_HLSprite_cpp"},  // host statics, src/game/HLSprite.cpp (see the note above)
     {0x1007d8ac, nullptr, "__sinit_Colours_cpp"},  // host statics, src/game/ui/Colours.cpp
     {0x1007de28, __sinit_intrface_cpp, "__sinit_intrface_cpp"},
@@ -152,16 +152,16 @@ const StaticInitialiser kStaticInitialisers[] = {
     {0x10090b2c, __sinit_LLCellRide_cpp, "__sinit_LLCellRide_cpp"},
     {0x10096f04, nullptr, "__sinit_LLCellSystem_cpp"},  // host statics, src/game/park/LLCellSystem.cpp
     {0x100a6be0, __sinit_lobby_cpp, "__sinit_lobby_cpp"},
-    {0x100afe1c, __sinit_lobby_globe_cpp, "__sinit_lobby_globe_cpp"},  // not translated yet
+    {0x100afe1c, __sinit_lobby_globe_cpp, "__sinit_lobby_globe_cpp"},
     {0x100b54f8, nullptr, "__sinit_lobby_island_cpp"},  // host statics, src/game/online/lobby_island.cpp, src/game/online/lobby_parser.cpp, src/game/online/LBFlyingMesh.cpp
     {0x100b6ae4, __sinit_lobby_parser_cpp, "__sinit_lobby_parser_cpp"},
-    {0x100b7c9c, __sinit_lobby_screen_cpp, "__sinit_lobby_screen_cpp"},  // not translated yet
+    {0x100b7c9c, __sinit_lobby_screen_cpp, "__sinit_lobby_screen_cpp"},
     {0x100d85f0, nullptr, "__sinit_rsse_cpp"},  // host statics, src/game/rides/rsse.cpp
     {0x100f1fb0, nullptr, "__sinit_analyser_cpp"},  // host statics, src/game/park/analyser.cpp
     {0x100f29b0, nullptr, "__sinit_Arrival_cpp"},  // host statics, src/game/people/Arrival.cpp
-    {0x100f4754, __sinit_BlockSave_cpp, "__sinit_BlockSave_cpp"},  // not translated yet
+    {0x100f4754, __sinit_BlockSave_cpp, "__sinit_BlockSave_cpp"},
     {0x100fbc84, nullptr, "__sinit_Entertainer_cpp"},  // host statics, src/game/people/Entertainer.cpp
-    {0x100fda00, __sinit_GoldenTickets_cpp, "__sinit_GoldenTickets_cpp"},  // not translated yet
+    {0x100fda00, __sinit_GoldenTickets_cpp, "__sinit_GoldenTickets_cpp"},
     {0x100fef90, __sinit_guard_cpp, "__sinit_guard_cpp"},
     {0x1010084c, nullptr, "__sinit_Handyman_cpp"},  // host statics, src/game/people/Handyman.cpp
     {0x10103ec0, nullptr, "__sinit_MapDelta_cpp"},  // host statics, src/game/park/MapDelta.cpp
@@ -198,27 +198,27 @@ const StaticInitialiser kStaticInitialisers[] = {
     {0x10168830, nullptr, "__sinit_VanillaTime_cpp"},  // host statics, src/game/VanillaTime.cpp
     {0x1016f35c, nullptr, "__sinit_FS_MasterSave_cpp"},  // translated (v51117), left out: see the note above
     {0x10178308, sinit_FS_Online_cpp, "__sinit_FS_Online_cpp"},  // translated as sinit_FS_Online_cpp
-    {0x1017ddb4, __sinit_FS_OnlineList_cpp, "__sinit_FS_OnlineList_cpp"},  // not translated yet
+    {0x1017ddb4, sinit_FS_OnlineList_cpp, "__sinit_FS_OnlineList_cpp"},  // translated as sinit_FS_OnlineList_cpp
     {0x1017fd58, nullptr, "__sinit_FS_UserInfo_cpp"},  // host statics, src/game/save/FS_UserInfo.cpp
     {0x101877b8, __sinit_ui_main_cpp, "__sinit_ui_main_cpp"},
     {0x1018bda8, __sinit_ui_utils_cpp, "__sinit_ui_utils_cpp"},
     {0x1018c8ec, nullptr, "__sinit_ui_tooltip_cpp"},  // host statics, src/game/ui/ui_tooltip.cpp
-    {0x101902e8, __sinit_ui_textmanager_cpp, "__sinit_ui_textmanager_cpp"},  // not translated yet
-    {0x101946ac, __sinit_ui_StatusPanel_cpp, "__sinit_ui_StatusPanel_cpp"},  // not translated yet
-    {0x1019592c, __sinit_ui_allKidsPanel_cpp, "__sinit_ui_allKidsPanel_cpp"},  // not translated yet
-    {0x10199e84, __sinit_ui_allStaffPanel_cpp, "__sinit_ui_allStaffPanel_cpp"},  // not translated yet
+    {0x101902e8, __sinit_ui_textmanager_cpp, "__sinit_ui_textmanager_cpp"},
+    {0x101946ac, __sinit_ui_StatusPanel_cpp, "__sinit_ui_StatusPanel_cpp"},
+    {0x1019592c, __sinit_ui_allKidsPanel_cpp, "__sinit_ui_allKidsPanel_cpp"},
+    {0x10199e84, __sinit_ui_allStaffPanel_cpp, "__sinit_ui_allStaffPanel_cpp"},
     {0x1019ad70, __sinit_ui_bogStatus_cpp, "__sinit_ui_bogStatus_cpp"},
-    {0x1019e260, __sinit_ui_entryPricePanel_cpp, "__sinit_ui_entryPricePanel_cpp"},  // not translated yet
+    {0x1019e260, __sinit_ui_entryPricePanel_cpp, "__sinit_ui_entryPricePanel_cpp"},
     {0x1019eea0, __sinit_ui_FeatureStatus_cpp, "__sinit_ui_FeatureStatus_cpp"},
     {0x101a0dbc, __sinit_ui_FinancePanel_cpp, "__sinit_ui_FinancePanel_cpp"},
-    {0x101a8df4, __sinit_ui_mainpanel2_cpp, "__sinit_ui_mainpanel2_cpp"},  // not translated yet
+    {0x101a8df4, __sinit_ui_mainpanel2_cpp, "__sinit_ui_mainpanel2_cpp"},
     {0x101adbe4, __sinit_ui_parkStatus_cpp, "__sinit_ui_parkStatus_cpp"},
     {0x101afa90, __sinit_ui_playerLogin_cpp, "__sinit_ui_playerLogin_cpp"},
     {0x101b30c8, __sinit_ui_Postcard_cpp, "__sinit_ui_Postcard_cpp"},
-    {0x101b8c8c, __sinit_ui_ridepanel_cpp, "__sinit_ui_ridepanel_cpp"},  // not translated yet
+    {0x101b8c8c, __sinit_ui_ridepanel_cpp, "__sinit_ui_ridepanel_cpp"},
     {0x101bc3ec, __sinit_ui_RideStatus_cpp, "__sinit_ui_RideStatus_cpp"},
     {0x101bdfb8, __sinit_ui_shopStatus_cpp, "__sinit_ui_shopStatus_cpp"},
-    {0x101bf2dc, __sinit_ui_StaffCostsPanel_cpp, "__sinit_ui_StaffCostsPanel_cpp"},  // not translated yet
+    {0x101bf2dc, __sinit_ui_StaffCostsPanel_cpp, "__sinit_ui_StaffCostsPanel_cpp"},
     {0x101c0cdc, __sinit_ui_staffPanel_cpp, "__sinit_ui_staffPanel_cpp"},
     {0x101c2b10, __sinit_ui_showStatus_cpp, "__sinit_ui_showStatus_cpp"},
     {0x101c40f0, __sinit_ui_staffRoomStatus_cpp, "__sinit_ui_staffRoomStatus_cpp"},
@@ -227,9 +227,9 @@ const StaticInitialiser kStaticInitialisers[] = {
     {0x101cac94, __sinit_UI_Base_cpp, "__sinit_UI_Base_cpp"},
     {0x101e0cec, __sinit_ui_cityLobbyController_cpp, "__sinit_ui_cityLobbyController_cpp"},
     {0x101e1e3c, __sinit_ui_islandLobbyController_cpp, "__sinit_ui_islandLobbyController_cpp"},
-    {0x101e2450, __sinit_ui_onlineCityInfoOverlay_cpp, "__sinit_ui_onlineCityInfoOverlay_cpp"},  // not translated yet
-    {0x101e2c78, __sinit_ui_onlineLogin_cpp, "__sinit_ui_onlineLogin_cpp"},  // not translated yet
-    {0x101e3628, __sinit_ui_onlineNewsPanel_cpp, "__sinit_ui_onlineNewsPanel_cpp"},  // not translated yet
+    {0x101e2450, __sinit_ui_onlineCityInfoOverlay_cpp, "__sinit_ui_onlineCityInfoOverlay_cpp"},
+    {0x101e2c78, __sinit_ui_onlineLogin_cpp, "__sinit_ui_onlineLogin_cpp"},
+    {0x101e3628, __sinit_ui_onlineNewsPanel_cpp, "__sinit_ui_onlineNewsPanel_cpp"},
     {0x101e551c, __sinit_ui_onlineOutbox_cpp, "__sinit_ui_onlineOutbox_cpp"},
     {0x101ea5d8, __sinit_ui_onlineParkFindPanel_cpp, "__sinit_ui_onlineParkFindPanel_cpp"},
     {0x101ebae0, __sinit_ui_onlineParkInfoPanel_cpp, "__sinit_ui_onlineParkInfoPanel_cpp"},

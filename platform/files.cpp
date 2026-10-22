@@ -364,6 +364,33 @@ OSErr PBHGetVInfoSync(HVolumeParam* paramBlock) {
     return 0;
 }
 
+// The current volume and folder (InterfaceLib, bullfrog glue 0x1006b55c): the one volume, named
+// like the game folder, and its root folder (dirID 2, as FSMakeFSSpec gives).
+OSErr HGetVol(unsigned char* volName, int16_t* vRefNum, int32_t* dirID) {
+    if (volName != nullptr) SamsUtilities::UString::c2pcpy(volName, "TPW");
+    if (vRefNum != nullptr) *vRefNum = kGameVolume;
+    if (dirID != nullptr) *dirID = 2;
+    return 0;
+}
+
+// UpperString (glue 0x1006b574) and p2cstr (glue 0x1006b58c). LbFile_GetCurrentDrive passes the
+// volume name's length byte as the pointer, so an address in the Mac's low memory (below the
+// first page) is left alone.
+static bool IsRealPointer(const unsigned char* text) { return reinterpret_cast<uintptr_t>(text) >= 4096; }
+
+void UpperString(unsigned char* text, bool) {
+    if (!IsRealPointer(text)) return;
+    for (unsigned char* c = text + 1; c < text + 1 + text[0]; ++c) *c = static_cast<unsigned char>(std::toupper(*c));
+}
+
+char* p2cstr(unsigned char* text) {
+    if (!IsRealPointer(text)) return reinterpret_cast<char*>(text);
+    const size_t length = text[0];
+    std::memmove(text, text + 1, length);
+    text[length] = '\0';
+    return reinterpret_cast<char*>(text);
+}
+
 int16_t FSpOpenResFile(const FSSpec* spec, int8_t) {
     if (spec->parID != kDebugOptionsFile) return -1;
     gCurrentResFile = kDebugOptionsFile;

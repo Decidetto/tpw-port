@@ -2,6 +2,7 @@
 // strings, code page conversions.
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <mutex>
 
 #include "platform.h"
@@ -179,6 +180,46 @@ int32_t FileTimeToSystemTime(const tagFILETIME* fileTime, _SYSTEMTIME* time) {
     time->wMinute = static_cast<uint16_t>(rest % 3600 / 60);
     time->wSecond = static_cast<uint16_t>(rest % 60);
     time->wMilliseconds = 0;
+    return 1;
+}
+
+// macdoze 0x10005f08 (144 bytes). GetDateTime (the Mac's local clock in seconds since 1904) and LongSecondsToDate make the calendar date; the
+// original copies its year, month, day of week, day, hour, minute and second, and the milliseconds are always 0. The day of the week is
+// the Mac's (1 Sunday to 7 Saturday), as in FileTimeToSystemTime. The host's local clock replaces GetDateTime.
+void GetLocalTime(_SYSTEMTIME* time) {
+    const std::time_t now = std::time(nullptr);
+    std::tm local;
+    localtime_r(&now, &local);
+    time->wYear = static_cast<uint16_t>(local.tm_year + 1900);
+    time->wMonth = static_cast<uint16_t>(local.tm_mon + 1);
+    time->wDayOfWeek = static_cast<uint16_t>(local.tm_wday + 1);
+    time->wDay = static_cast<uint16_t>(local.tm_mday);
+    time->wHour = static_cast<uint16_t>(local.tm_hour);
+    time->wMinute = static_cast<uint16_t>(local.tm_min);
+    time->wSecond = static_cast<uint16_t>(local.tm_sec);
+    time->wMilliseconds = 0;
+}
+
+// macdoze 0x10006144 (208 bytes). The inverse of FileTimeToSystemTime: the Mac's LongDateToSeconds makes seconds since 1904 of the year,
+// month, day, hour, minute and second (the day of the week and the milliseconds are not read), which become ticks of 100 ns (the 64-bit
+// multiply by 10,000,000) and get the same 95616284229632000 added that FileTimeToSystemTime takes off. Always 1. Assumption (not checked
+// against the Toolbox): a month outside 1 to 12 carries into the year.
+int32_t SystemTimeToFileTime(const _SYSTEMTIME* time, tagFILETIME* fileTime) {
+    int64_t year = time->wYear;
+    int64_t month = static_cast<int64_t>(time->wMonth) - 1;
+    year += month >= 0 ? month / 12 : -((11 - month) / 12);
+    month = ((month % 12) + 12) % 12 + 1;
+    // Days from 1 March 0000 to the civil date (the days-from-civil algorithm), less the 695361 days to 1 January 1904.
+    if (month <= 2) --year;
+    const int64_t era = (year >= 0 ? year : year - 399) / 400;
+    const int64_t yearOfEra = year - era * 400;
+    const int64_t dayOfYear = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + time->wDay - 1;
+    const int64_t dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
+    const int64_t days = era * 146097 + dayOfEra - 695361;
+    const int64_t seconds = days * 86400 + time->wHour * 3600 + time->wMinute * 60 + time->wSecond;
+    const uint64_t ticks = static_cast<uint64_t>(seconds) * 10000000ull + 95616284229632000ull;
+    fileTime->dwLowDateTime = static_cast<uint32_t>(ticks);
+    fileTime->dwHighDateTime = static_cast<uint32_t>(ticks >> 32);
     return 1;
 }
 
