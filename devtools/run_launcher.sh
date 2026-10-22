@@ -31,6 +31,10 @@ for arg in "$@"; do [ "$arg" = "--launcher-defaults" ] && aspect="" && resolutio
 # A test run also opens behind the other windows and never takes the focus (--background), so the
 # person working on that screen is not interrupted; pass --foreground to have it in front.
 background="--background"
+# A test run is in the game's window with a title bar (--windowed). The script's own --fullscreen passes neither
+# --windowed nor --background: the game's real full-screen window, a Space of its own on the --display screen (the
+# built-in one unless the options name another), as a player gets it; that screen is taken over until the run ends.
+windowed="--windowed"
 # The game comes from the extracted US CD (--game, --program below) unless the options start from the launcher's data
 # folder instead: --play us|eur (that edition, no launcher window), --data DIR (another data folder than the per-user
 # one), or the script's own --launcher-window (the launcher's window opens, on the same screen and behind the others like
@@ -42,6 +46,7 @@ done
 rest=""
 for arg in "$@"; do
   if [ "$arg" = "--foreground" ]; then background=""
+  elif [ "$arg" = "--fullscreen" ]; then background=""; windowed=""
   elif [ "$arg" != "--launcher-defaults" ] && [ "$arg" != "--launcher-window" ]; then rest="$rest $arg"; fi
 done
 mkdir -p "$build/user-$name"
@@ -54,9 +59,9 @@ cd "$root" || exit 1
 # The game's data tables come from the US CD's program (--program), whichever game folder the options name: the European
 # folder (devtools/import_eur.py) has no Mac program of its own. A --program in the options takes its place.
 if [ -n "$from_data" ]; then
-  "$build/tpw_launcher" --user "$build/user-$name" --windowed $display $aspect $resolution $background $rest > "$build/launch-$name.log" 2>&1 &
+  "$build/tpw_launcher" --user "$build/user-$name" $windowed $display $aspect $resolution $background $rest > "$build/launch-$name.log" 2>&1 &
 else
-  "$build/tpw_launcher" --game "extracted/disc-hfs/Theme Park Data" --program "extracted/disc-hfs/Theme Park Data/SimTheme Park" --user "$build/user-$name" --windowed $display $aspect $resolution $background $rest > "$build/launch-$name.log" 2>&1 &
+  "$build/tpw_launcher" --game "extracted/disc-hfs/Theme Park Data" --program "extracted/disc-hfs/Theme Park Data/SimTheme Park" --user "$build/user-$name" $windowed $display $aspect $resolution $background $rest > "$build/launch-$name.log" 2>&1 &
 fi
 pid=$!
 n=0

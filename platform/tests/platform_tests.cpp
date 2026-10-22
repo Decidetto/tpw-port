@@ -1869,6 +1869,24 @@ static void TestFitLetterbox() {
     CHECK(pixels.left == 10 && pixels.top == 21 && pixels.right == 111 && pixels.bottom == 71);
 }
 
+// The game's full-screen box is a real full-screen window only through the fit and never with --background; the
+// window is then the whole screen and the game's picture is letterboxed into it.
+static void TestFitFullScreen() {
+    CHECK(tpw::fit::RealFullScreen(true, true, false));
+    CHECK(!tpw::fit::RealFullScreen(false, true, false));   // --windowed: the document window
+    CHECK(!tpw::fit::RealFullScreen(true, true, true));     // --background: the fitted window behind the others
+    CHECK(!tpw::fit::RealFullScreen(true, false, false));   // --no-fit: the window is the game's size
+    // A 16:10 screen (1440 x 900 points) holding a 16:9 game: bars above and below (45 each), none at the sides.
+    tpw::fit::Rect box = tpw::fit::Letterbox(1440, 900, 3840, 2160);
+    CHECK(box.left == 0.0 && box.width == 1440.0 && box.height == 810.0 && box.top == 45.0);
+    // The same screen at 4:3: bars at the sides only (120 each).
+    box = tpw::fit::Letterbox(1440, 900, 2048, 1536);
+    CHECK(box.top == 0.0 && box.height == 900.0 && box.width == 1200.0 && box.left == 120.0);
+    // A 16:9 screen holding a 16:9 game: no bars at all.
+    box = tpw::fit::Letterbox(1920, 1080, 3840, 2160);
+    CHECK(box.left == 0.0 && box.top == 0.0 && box.width == 1920.0 && box.height == 1080.0);
+}
+
 static void TestFitMouse() {
     const int gameWide = 2048, gameHigh = 1536;
     double gx = 0, gy = 0;
@@ -2599,6 +2617,7 @@ int main() {
     TestFitArithmetic();
     TestFitLetterbox();
     TestFitMouse();
+    TestFitFullScreen();
 #ifdef TPW_PORT_FIX
     TestWideScreen();
     TestWidePick();

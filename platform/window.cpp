@@ -6,7 +6,8 @@
 // The window FITS THE SCREEN (platform/fit.h, unless --no-fit): the game draws at its own resolution into an
 // offscreen framebuffer (platform/offscreen.cpp), and every presented frame is scaled into the window, which is as large
 // as the screen allows with the game's aspect ratio and never has more pixels than the game. The game is told its
-// own size, not the window's, and the mouse is mapped back through the letterbox.
+// own size, not the window's, and the mouse is mapped back through the letterbox. The game's full-screen box (procID 2)
+// is a real full-screen window, the whole screen in a Space of its own (not with --windowed, --background or --no-fit).
 #include <SDL3/SDL.h>
 #if defined(__APPLE__)
 #include <objc/message.h>
@@ -48,6 +49,7 @@ struct FitState {
     int gameWide = 0;
     int gameHigh = 0;
     SDL_DisplayID display = 0;
+    bool fullScreen = false;    // a real full-screen window (fit::RealFullScreen): the whole screen, a Space of its own
 } gFit;
 
 // The window's size in points, and the game's picture inside it (points from the top left).
@@ -354,10 +356,15 @@ static void PlaceOnChosenDisplay(SDL_Window* window, SDL_DisplayID chosen) {
     tpw::Log("window on display \"%s\"", nowName != nullptr ? nowName : "?");
 }
 
-// The fit could not be kept (no framebuffer objects): back to the old window, as large as the game in points.
+// The fit could not be kept (no framebuffer objects): back to the old window, as large as the game in points (out of
+// full screen first: without the fit the game draws into the window directly, at the window's size).
 static void DisableFit(const char* why) {
     tpw::Log("fit: %s; the window is the game's size", why);
     tpw::offscreen::Destroy();
+    if (gFit.fullScreen) {
+        SDL_SetWindowFullscreen(gWindow.sdl, false);
+        gFit.fullScreen = false;
+    }
     gFit.wanted = false;
     SDL_SetWindowSize(gWindow.sdl, gFit.gameWide, gFit.gameHigh);
     SDL_SyncWindow(gWindow.sdl);
@@ -371,12 +378,30 @@ static float DisplayDensity(SDL_DisplayID display) {
     return density > 0.0f ? density : 1.0f;
 }
 
+// A real full-screen window: its size, which is the whole screen's (the screen's full bounds, menu bar and dock
+// included), as the window itself reports it.
+static void LogFullScreen() {
+    int pointsWide = 0, pointsHigh = 0, pixelsWide = 0, pixelsHigh = 0;
+    SDL_GetWindowSize(gWindow.sdl, &pointsWide, &pointsHigh);
+    SDL_GetWindowSizeInPixels(gWindow.sdl, &pixelsWide, &pixelsHigh);
+    const SDL_DisplayID now = SDL_GetDisplayForWindow(gWindow.sdl);
+    const char* name = now != 0 ? SDL_GetDisplayName(now) : nullptr;
+    tpw::Log("fullscreen: %dx%d points (%dx%d pixels) on \"%s\"", pointsWide, pointsHigh, pixelsWide, pixelsHigh,
+             name != nullptr ? name : "?");
+}
+
 // With the fit: sizes the window for the game's resolution and the screen it is on, and centres it there. The window's
 // own frame (title bar) is taken off the screen's usable bounds (which already leave out the menu bar and the dock), and
 // its pixel density is asked of the window itself once it is on the screen. Called when the window is made and whenever
-// the game's resolution changes; logs what it did.
+// the game's resolution changes; logs what it did. A real full-screen window (or one about to be, while hidden) keeps its
+// size, the whole screen: only the framebuffer (SetGameSize) and the letterbox (every frame) follow the new resolution.
 static void RefitWindow() {
     SDL_Window* window = gWindow.sdl;
+    if (gFit.fullScreen && (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0) {
+        tpw::Log("fit: game %dx%d letterboxed into the full screen", gFit.gameWide, gFit.gameHigh);
+        if (gWindow.visible) LogFullScreen();
+        return;
+    }
     const SDL_DisplayID display = gFit.display != 0 ? gFit.display : SDL_GetPrimaryDisplay();
     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED_DISPLAY(display), SDL_WINDOWPOS_CENTERED_DISPLAY(display));
     SDL_SyncWindow(window);
@@ -461,6 +486,13 @@ GrafPort* NewCWindow(void*, const Rect* bounds, const unsigned char* title, bool
     if (gFit.wanted) {
         RefitWindow();
         PlaceOnChosenDisplay(gWindow.sdl, 0);
+        // The game's full-screen box is a real full-screen window (SDL's desktop full screen, a Space of its own on the
+        // chosen screen, which macOS makes when the window is shown). The fitted window above is its size outside full
+        // screen (Cmd+Ctrl+F or the green button leave it).
+        if (tpw::fit::RealFullScreen(gWindow.fullScreenBox, true, tpw::config().background)) {
+            gFit.fullScreen = SDL_SetWindowFullscreenMode(gWindow.sdl, nullptr) && SDL_SetWindowFullscreen(gWindow.sdl, true);
+            if (!gFit.fullScreen) tpw::Log("fullscreen: not available (%s); the fitted window stays", SDL_GetError());
+        }
     } else {
         if (procID != 2) SDL_SetWindowPosition(gWindow.sdl, bounds->left, bounds->top);
         PlaceOnChosenDisplay(gWindow.sdl, chosen);
@@ -502,6 +534,12 @@ int32_t ShowWindow(GrafPort* window, int32_t command) {
         if (tpw::config().background) SendWindowToBack();
         else SDL_RaiseWindow(gWindow.sdl);
         gWindow.visible = true;
+        if (gFit.fullScreen && !wasVisible) {
+            // SDL enters the full screen asked for while the window was hidden as it is shown; macOS animates the move
+            // to the new Space, so the size is read once that is over (SDL_SyncWindow waits at most 2.5 seconds).
+            if (!SDL_SyncWindow(gWindow.sdl)) tpw::Log("fullscreen: the move to full screen had not finished in time");
+            LogFullScreen();
+        }
     }
     return wasVisible ? 1 : 0;
 }

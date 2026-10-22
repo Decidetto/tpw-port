@@ -15,6 +15,7 @@
 
 #include "platform.h"
 #include "platform/indirectx.h"
+#include "platform/interfacelib.h"
 #include "platform/macdoze.h"
 #include "WinScrn.h"
 
@@ -214,7 +215,14 @@ int32_t DirectDrawCreate(NS_MacDoze::_GUID*, IDirectDraw** out, NS_MacDoze::IUnk
     return DD_OK;
 }
 
-int32_t IDirectDraw::SetCooperativeLevel(GrafPort*, uint32_t) { return DD_OK; }
+// DDSCL_FULLSCREEN (bit 0) takes the screen for the window, which shows it: the engine's full-screen start-up
+// (tb_ddraw.cpp) never calls ShowWindow itself, and without an intro film (--no-movies, or a film that does not
+// open) nothing else would, so the game would run with its window hidden. Showing an already visible window
+// changes nothing.
+int32_t IDirectDraw::SetCooperativeLevel(GrafPort* window, uint32_t level) {
+    if ((level & 1u) != 0 && window != nullptr && ::FrontWindow() != window) NS_MacDoze::ShowWindow(window, 5);
+    return DD_OK;
+}
 
 // Full screen: the game keeps drawing at its own resolution, which it now names; the window follows
 // (tpw::SetGameSize: re-fitted to the screen, or resized to it with --no-fit).

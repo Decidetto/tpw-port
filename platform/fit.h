@@ -46,6 +46,15 @@ inline WindowFit ComputeWindowFit(double usableWide, double usableHigh, double f
     return fit;
 }
 
+// Whether the game's window becomes a real full-screen window (a Space of its own, the menu bar and the dock hidden, as
+// the green button or Cmd+Ctrl+F make it): only the game's full-screen box (procID 2; --windowed asks for a document
+// window instead), only through the fit (without it the game draws into the window directly, at the window's size), and
+// never with --background (a full-screen Space cannot sit behind the other windows). The window is then the whole
+// screen and the game's picture is letterboxed into it.
+inline bool RealFullScreen(bool fullScreenBox, bool fitted, bool background) {
+    return fullScreenBox && fitted && !background;
+}
+
 // The largest rectangle of the game's aspect ratio inside a window of the given size, centred in it.
 inline Rect Letterbox(double windowWide, double windowHigh, int gameWide, int gameHigh) {
     Rect box;

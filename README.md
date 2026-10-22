@@ -116,13 +116,15 @@ run from WORK, starts tpw-port/build/tpw_launcher with its own user folder (tpw-
 (tpw-port/build/launch-NAME.log) and quits it after SECONDS. Options: --mute, --no-movies, --windowed, --display builtin,
 --background, --launcher-window, --play us|eur and --data DIR (start from the launcher's data folder instead of
 extracted/), and the scripted input used to test it (--click X,Y@PASS, --type TEXT@PASS, --drag X0,Y0-X1,Y1@PASS,
---frames N). tpw_platform_tests (cmake --build build --target tpw_platform_tests) checks the platform layer without
-a display.
+--frames N), and --fullscreen: the game's real full-screen window on the --display screen, without --windowed or
+--background; that screen is taken over until the run ends. tpw_platform_tests (cmake --build build --target
+tpw_platform_tests) checks the platform layer without a display.
 
 ### Widescreen and resolution
 
-The port runs full screen (--windowed opens a window) and waits for the display's refresh (vsync). It is widescreen by
-default: 16:9 at 3840 x 2160. The game renders offscreen at that size and the window shows it scaled to fit the
+The port runs as a real full-screen window, a Space of its own with the menu bar and the dock hidden (Cmd+Ctrl+F
+leaves and re-enters it; --windowed opens a window with a title bar; --background keeps a window fitted to the screen
+behind the others), and waits for the display's refresh (vsync). It is widescreen by default: 16:9 at 3840 x 2160. The game renders offscreen at that size and the window shows it scaled to fit the
 screen, so a small window still gets a sharp picture (3D edges and the TrueType text; the game's own textures are 256 x
 256 at most and do not gain detail). The game's bitmap fonts have one size for every resolution from 1024 x 768 up, so
 the panels' small print is smaller on the screen at the larger sizes (at 3840 x 2160 about 0.7 times its size at 2730 x
