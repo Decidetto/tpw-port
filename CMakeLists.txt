@@ -17,9 +17,11 @@ set(TPW_DECOMP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tpw-decomp)
 if(NOT EXISTS ${TPW_DECOMP_DIR}/CMakeLists.txt)
   message(FATAL_ERROR "tpw-decomp is missing: git submodule update --init")
 endif()
-# The game's data tables come from your own copy of the game (see tpw-decomp's README); the default is the CD's own
-# SimTheme Park application, as the import writes it next to this repository. Any full Mac build will do (the CD's 2.0.1,
-# the 2.04b3 patch's, the 2.1 releases).
+# The game's data tables come from your own copy of the game (see tpw-decomp's README). The launcher reads them at run
+# time from the game folder's "SimTheme Park" application (or the one its --program names), so the build holds none of
+# them. Only a build made with -DTPW_TABLES_AT_CONFIGURE=ON compiles them in at configure time, from TPW_GAME_PROGRAM;
+# its default is the CD's own SimTheme Park application, as the import writes it next to this repository. Any full Mac
+# build will do (the CD's 2.0.1, the 2.04b3 patch's, the 2.1 releases).
 if(NOT TPW_GAME_PROGRAM AND NOT DEFINED ENV{TPW_GAME_PROGRAM})
   set(TPW_GAME_PROGRAM "${CMAKE_CURRENT_SOURCE_DIR}/../extracted/disc-hfs/Theme Park Data/SimTheme Park"
       CACHE FILEPATH "A full Mac SimTheme Park application (its data fork) the data tables are read from")
@@ -100,6 +102,9 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
   enable_language(C)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/libjpeg-6b ${CMAKE_CURRENT_BINARY_DIR}/third_party/libjpeg-6b)
   target_link_libraries(tpw_platform PRIVATE tpw_libjpeg)
+  if(TPW_TABLES_AT_CONFIGURE)
+    target_compile_definitions(tpw_platform PRIVATE TPW_TABLES_AT_CONFIGURE=1)   # LoadGameTables reads nothing
+  endif()
   if(APPLE)
     # platform/gdi.cpp draws the signs' text with CoreText into a CoreGraphics bitmap.
     target_link_libraries(tpw_platform PUBLIC "-framework CoreText" "-framework CoreGraphics" "-framework CoreFoundation" objc)
@@ -122,10 +127,11 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
 
   add_library(tpw_launcher_objects OBJECT launcher/main.cpp launcher/pending_manual.cpp launcher/static_init.cpp)
   target_include_directories(tpw_launcher_objects PRIVATE ${TPW_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/platform ${TPW_DECOMP_DIR}/platform launcher)
-  target_link_libraries(tpw_launcher_objects PRIVATE SDL3::SDL3)
+  # main.cpp opens the launcher's own window (tpw_launcher_ui, below) when no --game is given.
+  target_link_libraries(tpw_launcher_objects PRIVATE SDL3::SDL3 tpw_launcher_ui)
 
   # SDL3 and zlib's inflate (src/bullfrog/LbZLib.cpp) come from the static libraries built here (--provides), so the
-  # generator must not stand in for them.
+  # generator must not stand in for them; nor for the launcher window's library and the importer under it.
   if(APPLE)
     set(TPW_STUB_SYSLIBS --syslib /System/Library/Frameworks/OpenGL.framework/OpenGL)
   else()
@@ -136,14 +142,16 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
     OUTPUT ${TPW_STUBS}
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/launcher/gen_stubs.py
             --out ${TPW_STUBS} --include-dir ${TPW_INCLUDE_DIR}
-            --nm ${CMAKE_NM} --provides $<TARGET_FILE:SDL3-static> --provides $<TARGET_FILE:tpw_zlib> --provides $<TARGET_FILE:tpw_libjpeg> ${TPW_STUB_SYSLIBS} ${TPW_MOVIE_SYSLIBS}
+            --nm ${CMAKE_NM} --provides $<TARGET_FILE:SDL3-static> --provides $<TARGET_FILE:tpw_zlib> --provides $<TARGET_FILE:tpw_libjpeg>
+            --provides $<TARGET_FILE:tpw_launcher_ui> --provides $<TARGET_FILE:tpw_assets> ${TPW_STUB_SYSLIBS} ${TPW_MOVIE_SYSLIBS}
             $<TARGET_FILE:tpw> $<TARGET_FILE:tpw_platform> $<TARGET_OBJECTS:tpw_launcher_objects>
-    DEPENDS tpw tpw_platform SDL3-static tpw_zlib tpw_libjpeg $<TARGET_OBJECTS:tpw_launcher_objects> launcher/gen_stubs.py
+    DEPENDS tpw tpw_platform SDL3-static tpw_zlib tpw_libjpeg tpw_launcher_ui tpw_assets $<TARGET_OBJECTS:tpw_launcher_objects>
+            launcher/gen_stubs.py
     COMMAND_EXPAND_LISTS VERBATIM
     COMMENT "Generating stand-ins for untranslated and unimplemented functions")
   add_executable(tpw_launcher $<TARGET_OBJECTS:tpw_launcher_objects> ${TPW_STUBS})
   target_include_directories(tpw_launcher PRIVATE ${TPW_INCLUDE_DIR} launcher)
-  target_link_libraries(tpw_launcher PRIVATE tpw tpw_platform)
+  target_link_libraries(tpw_launcher PRIVATE tpw tpw_platform tpw_launcher_ui)
 
   # What can be checked of the platform layer without a display (path mapping, key
   # tables, string helpers): ctest runs it.
@@ -165,6 +173,79 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
   add_executable(tpw_host_filmbox tests/host_filmbox.cpp)
   target_include_directories(tpw_host_filmbox PRIVATE ${TPW_INCLUDE_DIR})
   add_test(NAME filmbox COMMAND tpw_host_filmbox)
+
+  # The launcher's own window (launcher/ui/): widgets drawn with SDL_Renderer, text with stb_truetype
+  # (third_party/stb/), in the fonts of third_party/fonts/, which are compiled in as byte arrays written here at
+  # configure time, so the launcher needs no files beside it to draw its window.
+  set(TPW_UI_FONTS
+      kFredokaBold third_party/fonts/fredoka/Fredoka-Bold.ttf
+      kFredokaSemiBold third_party/fonts/fredoka/Fredoka-SemiBold.ttf
+      kNunitoRegular third_party/fonts/nunito/Nunito-Regular.ttf
+      kNunitoBold third_party/fonts/nunito/Nunito-Bold.ttf)
+  set(TPW_UI_FONTS_CPP ${CMAKE_CURRENT_BINARY_DIR}/ui_fonts.cpp)
+  set(fonts_text "// Written by CMakeLists.txt from third_party/fonts/ (SIL Open Font License 1.1, see the OFL.txt files).\n")
+  string(APPEND fonts_text "#include <cstddef>\nnamespace tpw::ui::fontdata {\n")
+  list(LENGTH TPW_UI_FONTS fonts_length)
+  math(EXPR fonts_last "${fonts_length} - 1")
+  foreach(i RANGE 0 ${fonts_last} 2)
+    math(EXPR j "${i} + 1")
+    list(GET TPW_UI_FONTS ${i} name)
+    list(GET TPW_UI_FONTS ${j} font)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${font})
+    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/${font} hex HEX)
+    string(LENGTH "${hex}" hex_length)
+    math(EXPR size "${hex_length} / 2")
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," hex "${hex}")
+    string(APPEND fonts_text "extern const unsigned char ${name}[];\nconst unsigned char ${name}[] = {\n${hex}\n};\n")
+    string(APPEND fonts_text "extern const size_t ${name}Size;\nconst size_t ${name}Size = ${size};\n")
+  endforeach()
+  string(APPEND fonts_text "}  // namespace tpw::ui::fontdata\n")
+  file(WRITE ${TPW_UI_FONTS_CPP}.new "${fonts_text}")
+  configure_file(${TPW_UI_FONTS_CPP}.new ${TPW_UI_FONTS_CPP} COPYONLY)
+
+  file(GLOB TPW_LAUNCHER_UI_SOURCES CONFIGURE_DEPENDS launcher/ui/*.cpp)
+  add_library(tpw_launcher_ui STATIC ${TPW_LAUNCHER_UI_SOURCES} ${TPW_UI_FONTS_CPP})
+  target_include_directories(tpw_launcher_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/launcher/ui)
+  target_include_directories(tpw_launcher_ui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb)
+  target_link_libraries(tpw_launcher_ui PUBLIC SDL3::SDL3 tpw_assets ZLIB::ZLIB)
+  # The About box's versions (launcher/ui/versions.cpp) come from the libraries' own headers: libjpeg's and FFmpeg's
+  # (headers only; the game's platform layer links them), and the stb headers' first lines, which carry their versions.
+  target_include_directories(tpw_launcher_ui PRIVATE $<TARGET_PROPERTY:tpw_libjpeg,INTERFACE_INCLUDE_DIRECTORIES>)
+  if(TPW_MOVIES)
+    target_include_directories(tpw_launcher_ui SYSTEM PRIVATE $<TARGET_PROPERTY:tpw_ffmpeg,INTERFACE_INCLUDE_DIRECTORIES>)
+    target_compile_definitions(tpw_launcher_ui PRIVATE TPW_HAVE_FFMPEG=1)
+  endif()
+  foreach(stb_header truetype rect_pack)
+    file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb/stb_${stb_header}.h stb_first LIMIT_COUNT 1)
+    if(NOT stb_first MATCHES " - v([0-9.]+) - ")
+      message(FATAL_ERROR "third_party/stb/stb_${stb_header}.h: no version on its first line")
+    endif()
+    string(TOUPPER ${stb_header} stb_upper)
+    target_compile_definitions(tpw_launcher_ui PRIVATE TPW_STB_${stb_upper}_VERSION="${CMAKE_MATCH_1}")
+  endforeach()
+
+  # Every screen of the launcher's window drawn offscreen (SDL's software renderer, no window) from a scripted import,
+  # written as PNG files for a look by eye: to TPW_UI_SCREENS_DIR, or to ui-screens/ in the build folder.
+  add_executable(tpw_launcher_ui_tests launcher/ui/tests/host_ui_screens.cpp)
+  target_link_libraries(tpw_launcher_ui_tests PRIVATE tpw_launcher_ui)
+  if(TPW_MOVIES)
+    target_compile_definitions(tpw_launcher_ui_tests PRIVATE TPW_TEST_FFMPEG=1)
+  endif()
+  target_compile_definitions(tpw_launcher_ui_tests PRIVATE TPW_UI_SCREENS_DEFAULT="${CMAKE_CURRENT_BINARY_DIR}/ui-screens")
+  add_test(NAME launcher_ui COMMAND tpw_launcher_ui_tests)
+  # The run-time table loader (platform/game_tables.cpp) against the configure-time tables, where the build has them (the
+  # differential tests' or TPW_TABLES_AT_CONFIGURE's): every table it reads from the CD's 2.0.1 program and from the 2.04b3
+  # patch's, by the program's SHA-1 and by the content search, must equal the generated arrays byte for byte. The scorers
+  # are the test's own (one body per name), so the game library is not linked. A program that is absent is skipped.
+  if(TPW_GENERATED_DIR AND EXISTS ${TPW_GENERATED_DIR}/advisor_lines.cpp)
+    add_executable(tpw_game_tables_tests platform/tests/game_tables_tests.cpp platform/game_tables.cpp ${TPW_GENERATED_SOURCES})
+    target_include_directories(tpw_game_tables_tests PRIVATE ${TPW_INCLUDE_DIR} ${TPW_GENERATED_DIR})
+    target_compile_definitions(tpw_game_tables_tests PRIVATE TPW_TABLES_AT_CONFIGURE=1)
+    add_test(NAME game_tables COMMAND tpw_game_tables_tests
+             "${CMAKE_CURRENT_SOURCE_DIR}/../extracted/disc-hfs/Theme Park Data/SimTheme Park"
+             "${CMAKE_CURRENT_SOURCE_DIR}/../extracted/SimTPPatch_204b3/Sim Theme Park Patch/patch 2.04b3/SimTheme Park")
+    set_tests_properties(game_tables PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
 else()
   message(STATUS "tpw: launcher not built (needs OpenGL and Python 3)")
 endif()
@@ -223,6 +304,11 @@ foreach(target ${TPW_DECOMP_TARGETS} ${TPW_PORT_TARGETS})
         set(dir ${TPW_OVERLAY_DIR}/platform)
       endif()
       string(SUBSTRING "${dir}" 0 ${prefix_length} prefix)
+      if(dir STREQUAL "${TPW_DECOMP_DIR}/assets")
+        # the launcher's asset library: no TPW_PORT_FIX, so nothing in it has an override
+        list(APPEND new_dirs ${dir})
+        continue()
+      endif()
       if(dir STREQUAL "${TPW_DECOMP_DIR}" OR prefix STREQUAL "${TPW_DECOMP_DIR}/")
         message(FATAL_ERROR "tpw-port: ${target} reads headers from ${dir}, past the overrides")
       endif()

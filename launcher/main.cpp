@@ -1,13 +1,16 @@
 // main.cpp: the native launcher. It points the platform layer at the installed game and at
 // a folder for what the game writes, then runs the game's own main (ThemeParkWorldMain,
 // TPMain.cpp). Whatever is not translated or implemented yet is a generated stand-in that
-// reports itself; a summary of the ones that were hit is printed at the end.
+// reports itself; a summary of the ones that were hit is printed at the end. Without --game
+// (or TPW_GAME_DIR) the launcher's own window (launcher/ui/) opens first: the player drops
+// their discs there, and Play starts the chosen edition from the verified data folder.
 #include <SDL3/SDL.h>
 
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <algorithm>
@@ -23,8 +26,12 @@
 #include "ResolutionBalance.h"
 #include "UI_Base.h"
 #include "platform.h"
+#include "platform/game_tables.h"
 #include "static_init.h"
 #include "stubs.h"
+#include "ui/backend.h"
+#include "ui/theme.h"
+#include "ui/window.h"
 
 namespace {
 // The largest preset, 4096 x 3072 (3840 x 2160 at 16:9), rendered offscreen and scaled to the window (the maintainer,
@@ -145,9 +152,17 @@ void OnCrashInfo(int signal, siginfo_t* info, void* context) {
 void Usage(const char* program) {
     std::fprintf(stderr,
                  "usage: %s [options]\n"
-                 "  --game DIR     the installed game: the folder that holds \"data\"\n"
-                 "                 (default: $TPW_GAME_DIR, else \"Theme Park Data\" here)\n"
-                 "  --user DIR     where saves and settings go (default: a per-user folder, one for each edition)\n"
+                 "  --game DIR     the installed game: the folder that holds \"data\" (default: $TPW_GAME_DIR). Without\n"
+                 "                 either, the launcher's own window opens: drop your discs on it, then press Play; the\n"
+                 "                 verified files, the saves and launcher.ini are kept in the data folder (below)\n"
+                 "  --play E       without the window: start edition E (us or eur) from the data folder, as Play does\n"
+                 "  --data DIR     the folder launcher.ini is in (default: the per-user folder SDL names for the\n"
+                 "                 launcher, such as ~/Library/Application Support/Midway on a Mac)\n"
+                 "  --program FILE the game's data tables are read from this full Mac \"SimTheme Park\" or \"Theme Park\n"
+                 "                 World\" application (its data fork; the CD's 2.0.1, the 2.04b3 patch's or a 2.1 release)\n"
+                 "                 (default: $TPW_GAME_PROGRAM, else \"SimTheme Park\" in the game folder)\n"
+                 "  --user DIR     where saves and settings go (default: a per-user folder, one for each edition; from\n"
+                 "                 the launcher's window or --play, saves/us or saves/eur in the data folder)\n"
                  "  --edition E    the edition the game folder holds: stp, SimTheme Park (the US Mac disc), or tpw, Theme\n"
                  "                 Park World (the UK/European disc, from devtools/import_eur.py); the window's title\n"
                  "                 follows it (default: told by the folder's data:Language, American being stp)\n"
@@ -188,6 +203,102 @@ void Usage(const char* program) {
                  program);
 }
 
+// ---- the launcher's window and its data folder (launcher-design section 4: assets/{us,eur,gold}, saves/{us,eur},
+// launcher.ini)
+
+// Copies an edition's saves from the folder earlier builds used (SDL's pref path for "tpw-decomp", "Theme Park World"
+// or "Theme Park World UK") into the data folder's saves/us or saves/eur, once: only while that folder does not exist
+// yet. The old folder is left as it was. SDL's pref path is <base>/<app>/ without an organisation and
+// <base>/<org>/<app>/ with one, on every system, so the old folder is found beside the launcher's own.
+void AdoptOldSaves(const std::filesystem::path& prefPath, const std::filesystem::path& saves, bool us) {
+    std::error_code ec;
+    if (std::filesystem::exists(saves, ec)) return;
+    std::filesystem::path base = prefPath;
+    if (!base.has_filename()) base = base.parent_path();   // the pref path ends in a separator
+    const std::filesystem::path old = base.parent_path() / "tpw-decomp" / (us ? "Theme Park World" : "Theme Park World UK");
+    if (!std::filesystem::is_directory(old, ec)) return;
+    std::filesystem::create_directories(saves.parent_path(), ec);
+    std::filesystem::copy(old, saves, std::filesystem::copy_options::recursive, ec);
+    if (ec) tpw::Log("saves: could not copy \"%s\" to \"%s\": %s", old.string().c_str(), saves.string().c_str(), ec.message().c_str());
+    else tpw::Log("saves: copied from \"%s\" (the folder earlier builds used; it is left as it was)", old.string().c_str());
+}
+
+// No --game: the edition comes from the data folder, through the launcher's window or --play. Fills in the game
+// folder, the edition, the user folder and the program (each unless an option named it already) and returns -1 to
+// start the game; any other value is the launcher's exit code (0 when the window was closed).
+int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, const std::string& dataDir,
+                         const std::string& play) {
+    std::string prefPath = dataDir;
+    if (prefPath.empty()) {
+        char* pref = SDL_GetPrefPath("", tpw::ui::kProductName);
+        if (pref == nullptr) {
+            std::fprintf(stderr, "launcher: no per-user folder for the launcher's data: %s\n", SDL_GetError());
+            return 1;
+        }
+        prefPath = pref;
+        SDL_free(pref);
+    }
+    tpw::ui::ImporterBackend backend(prefPath);
+    std::string err;
+    if (!backend.Open(err)) {
+        std::fprintf(stderr, "launcher: the data folder (launcher.ini in \"%s\") cannot be used: %s\n", prefPath.c_str(),
+                     err.c_str());
+        return 1;
+    }
+    tpw::ui::LaunchChoice choice;
+    if (!play.empty()) {
+        choice.edition = play == "us" ? tpw::assets::kEditionUs : tpw::assets::kEditionEur;
+        const tpw::assets::EditionStatus status = backend.Status(choice.edition);
+        if (!status.unlocked) {
+            std::fprintf(stderr,
+                         "launcher: --play %s: %zu of %zu required files of that edition are in \"%s\"\n%s"
+                         "launcher: open the launcher without --game and --play, and drop your discs on its window\n",
+                         play.c_str(), status.requiredPresent, status.required, backend.DataFolder().c_str(),
+                         choice.edition == tpw::assets::kEditionEur && !backend.HasProgram()
+                             ? "launcher: the European edition also needs the US Mac CD (the game's tables come from its "
+                               "program)\n"
+                             : "");
+            return 1;
+        }
+        backend.SetLastChoice(tpw::assets::EditionName(choice.edition), err);
+    } else {
+        // The window opens where the game's would: on the --display screen, behind the others with --background.
+        tpw::ui::WindowPlacement placement;
+        placement.background = config.background;
+        if (!config.display.empty()) {
+            if (config.background) {   // before SDL's video starts, as the game's window sets them
+                SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
+                SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_RAISED, "0");
+            }
+            // Video stays started (the window and then the game use it; display numbers hold while it runs).
+            if (SDL_InitSubSystem(SDL_INIT_VIDEO)) placement.display = tpw::ChosenDisplay();
+        }
+        switch (tpw::ui::RunLauncherWindow(backend, choice, err, placement)) {
+            case tpw::ui::WindowOutcome::Quit: return 0;
+            case tpw::ui::WindowOutcome::Failed:
+                std::fprintf(stderr, "launcher: the launcher's window failed: %s\n", err.c_str());
+                return 1;
+            case tpw::ui::WindowOutcome::Play: break;
+        }
+    }
+    const bool us = choice.edition == tpw::assets::kEditionUs;
+    const std::string edition = us ? "stp" : "tpw";
+    if (!config.edition.empty() && config.edition != edition)
+        tpw::Log("edition: %s was asked for, but the data folder's %s edition was chosen", config.edition.c_str(),
+                 tpw::assets::EditionName(choice.edition));
+    config.gameDir = backend.importer()->GameFolder(choice.edition);
+    config.edition = edition;
+    if (config.userDir.empty()) {
+        const std::filesystem::path saves = std::filesystem::path(backend.DataFolder()) / "saves" / (us ? "us" : "eur");
+        AdoptOldSaves(prefPath, saves, us);
+        config.userDir = saves;
+    }
+    if (program.empty()) program = backend.ProgramPath();
+    tpw::Log("data folder: %s", backend.DataFolder().c_str());
+    if (choice.gold) tpw::Log("Gold rides: switched on, but this build does not add them to the game yet");
+    return -1;
+}
+
 void Report() {
     std::vector<const char*> names(static_cast<size_t>(tpw_stub_count()) + 1);
     const int hit = tpw_stub_hits(names.data(), static_cast<int>(names.size()));
@@ -224,6 +335,9 @@ int main(int argc, char** argv) {
     int aspectWide = kDefaultAspectWide;
     int aspectHigh = kDefaultAspectHigh;
     if (const char* dir = std::getenv("TPW_GAME_DIR")) config.gameDir = dir;
+    std::filesystem::path program;   // the application the data tables are read from (platform/game_tables.cpp)
+    std::string dataDir, play;       // --data, --play: the launcher's data folder (no --game)
+    if (const char* file = std::getenv("TPW_GAME_PROGRAM")) program = file;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         auto value = [&]() -> const char* {
@@ -234,6 +348,15 @@ int main(int argc, char** argv) {
             return argv[++i];
         };
         if (arg == "--game") config.gameDir = value();
+        else if (arg == "--data") dataDir = value();
+        else if (arg == "--play") {
+            play = value();
+            if (play != "us" && play != "eur") {
+                std::fprintf(stderr, "launcher: --play wants us or eur: %s\n", play.c_str());
+                return 2;
+            }
+        }
+        else if (arg == "--program") program = value();
         else if (arg == "--user") config.userDir = value();
         else if (arg == "--edition") {
             config.edition = value();
@@ -322,7 +445,16 @@ int main(int argc, char** argv) {
             return arg == "--help" || arg == "-h" ? 0 : 2;
         }
     }
-    if (config.gameDir.empty()) config.gameDir = "Theme Park Data";
+    if (config.gameDir.empty()) {
+        const int exitCode = ChooseFromDataFolder(config, program, dataDir, play);
+        if (exitCode >= 0) {
+            SDL_Quit();
+            return exitCode;
+        }
+    } else if (!dataDir.empty() || !play.empty()) {
+        std::fprintf(stderr, "launcher: --data and --play start from the launcher's data folder; --game names the game itself\n");
+        return 2;
+    }
     std::error_code ec;
     if (!std::filesystem::is_directory(config.gameDir / "data", ec)) {
         std::fprintf(stderr, "launcher: no game found in \"%s\" (it must hold the game's \"data\" folder)\n",
@@ -343,6 +475,20 @@ int main(int argc, char** argv) {
     tpw::Log("game folder: %s", config.gameDir.string().c_str());
     tpw::Log("edition: %s", config.edition == "stp" ? "SimTheme Park (stp)" : "Theme Park World (tpw)");
     tpw::Log("user folder: %s", config.userDir.string().c_str());
+
+    // The original program's data tables (the advisor's, the window scripts, the ride templates and the save file's legal
+    // texts) are not in the build: they come from the player's own copy of the game, before the static initialisers run.
+    if (program.empty()) program = config.gameDir / "SimTheme Park";
+    std::string why;
+    if (!LoadGameTables(program.string().c_str(), &why)) {
+        std::fprintf(stderr,
+                     "launcher: the game's data tables could not be read from \"%s\": %s\n"
+                     "launcher: --program (or TPW_GAME_PROGRAM) names a full Mac \"SimTheme Park\" application, such as the\n"
+                     "launcher: US Mac CD's own, as devtools/import_originals.py writes it into the game folder\n",
+                     program.string().c_str(), why.c_str());
+        return 1;
+    }
+    tpw::Log("game tables: %s (%s)", tpw::GameTableSource().c_str(), program.string().c_str());
 
     // 4:3 leaves the game's own sizes alone (the 1280 x 1024 preset stays 5:4); anything wider widens the screen.
 #ifdef TPW_PORT_FIX

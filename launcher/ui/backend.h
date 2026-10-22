@@ -1,0 +1,70 @@
+// backend.h: what the launcher screen needs from the importer, as an interface, so the screenshot test can drive every
+// screen from a scripted feed with no disc. ImporterBackend is the real one over assets::Importer (assets/importer.h).
+// Threading is the importer's: Start() runs a drop on its worker thread and the screen drains progress every frame;
+// VerifyEdition() rehashes a whole edition, so the screen calls it from a thread of its own.
+#pragma once
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "importer.h"
+
+namespace tpw::ui {
+
+class ImportBackend {
+public:
+    virtual ~ImportBackend() = default;
+    virtual bool Start(const std::vector<std::string>& paths, std::string& err) = 0;
+    virtual bool Running() const = 0;
+    virtual void Cancel() = 0;
+    virtual std::vector<assets::ImportProgress> Drain() = 0;
+    virtual assets::ImportProgress Latest() const = 0;
+    virtual assets::ImportReport Wait() = 0;
+    // An edition's state. The real backend counts the US Mac program as one more required file of the European
+    // edition, from the US Mac CD, so its tile says that CD is still needed until the program is in place.
+    virtual assets::EditionStatus Status(assets::Edition edition) const = 0;
+    // Where the verified files are kept.
+    virtual std::string DataFolder() const = 0;
+    // Uses `folder` from now on (saved in launcher.ini). Files in the old folder stay there.
+    virtual bool ChangeDataFolder(const std::string& folder, std::string& err) = 0;
+    virtual long VerifyEdition(assets::Edition edition, std::string& err) = 0;
+    virtual bool RemoveEdition(assets::Edition edition, std::string& err) = 0;
+    virtual std::string LastChoice() const = 0;
+    virtual bool SetLastChoice(const std::string& choice, std::string& err) = 0;
+};
+
+class ImporterBackend : public ImportBackend {
+public:
+    // `prefPath`: the folder launcher.ini lives in (the SDL pref path); the data folder is what it names, or itself.
+    explicit ImporterBackend(std::string prefPath);
+    // Opens the importer (assets/importer.h Open()); call once before anything else.
+    bool Open(std::string& err);
+    assets::Importer* importer() { return importer_.get(); }
+    // The US Mac program in the data folder (assets/us/Theme Park Data/SimTheme Park): both editions read the game's
+    // tables from it (platform/game_tables.cpp), the European one included, whose PC CD has no Mac program. HasProgram:
+    // a file of an accepted size is there (what the importer counts as present). Empty or false before Open.
+    std::string ProgramPath() const;
+    bool HasProgram() const;
+
+    bool Start(const std::vector<std::string>& paths, std::string& err) override;
+    bool Running() const override;
+    void Cancel() override;
+    std::vector<assets::ImportProgress> Drain() override;
+    assets::ImportProgress Latest() const override;
+    assets::ImportReport Wait() override;
+    assets::EditionStatus Status(assets::Edition edition) const override;
+    std::string DataFolder() const override;
+    bool ChangeDataFolder(const std::string& folder, std::string& err) override;
+    long VerifyEdition(assets::Edition edition, std::string& err) override;
+    bool RemoveEdition(assets::Edition edition, std::string& err) override;
+    std::string LastChoice() const override;
+    bool SetLastChoice(const std::string& choice, std::string& err) override;
+
+private:
+    std::string IniPath() const;
+    assets::EditionStatus WithProgram(assets::EditionStatus s) const;
+    std::string prefPath_;
+    std::unique_ptr<assets::Importer> importer_;
+};
+
+}  // namespace tpw::ui

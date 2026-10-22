@@ -340,6 +340,10 @@ static SDL_DisplayID ChooseDisplay() {
     return chosen;
 }
 
+uint32_t tpw::ChosenDisplay() {
+    return ChooseDisplay();
+}
+
 // Without the fit: moves the window to the chosen screen (if one was asked for) and logs where it ended up.
 static void PlaceOnChosenDisplay(SDL_Window* window, SDL_DisplayID chosen) {
     if (chosen != 0) {
