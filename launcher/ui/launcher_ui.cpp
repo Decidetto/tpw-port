@@ -22,6 +22,7 @@ constexpr float kContentTop = 80;      // the screens start below the title
 constexpr float kTileHeight = 158;
 constexpr size_t kLogLimit = 4000;     // rows kept in the checking log
 constexpr float kNoticeSeconds = 4.5f;
+constexpr float kStartupNoticeSeconds = 9.0f;   // the startup check's notice: the window may still be opening
 
 // The tiles' header bands.
 constexpr Rgba kAccents[3] = {colour::kSkyChip, colour::kOrange, colour::kYellow};
@@ -105,6 +106,12 @@ LauncherUi::LauncherUi(SDL_Renderer* renderer, ImportBackend& backend)
     RefreshStatus();
     std::string last = backend_.LastChoice();
     playIndex_ = last == "us" ? 0 : 1;
+    // files the startup check (assets/importer.h) found changed and removed
+    std::string startup = backend_.StartupNotice();
+    if (!startup.empty()) {
+        ShowNotice(startup, true);
+        noticeLeft_ = kStartupNoticeSeconds;
+    }
 }
 
 LauncherUi::~LauncherUi() {
@@ -312,6 +319,10 @@ bool LauncherUi::AnyPlayable() const {
     return status_[0].unlocked || status_[1].unlocked;
 }
 
+bool LauncherUi::AllConfirmed() const {
+    return status_[0].unlocked && status_[1].unlocked && status_[2].unlocked;
+}
+
 void LauncherUi::OpenPlay() {
     if (!status_[playIndex_].unlocked) playIndex_ = status_[1].unlocked ? 1 : 0;
     screen_ = Screen::Play;
@@ -461,6 +472,10 @@ void LauncherUi::DrawTiles(const Rect& row, bool dropTargets) {
 }
 
 void LauncherUi::DrawHome(const Rect& w) {
+    if (AllConfirmed()) {
+        DrawReady(w);
+        return;
+    }
     float top = DrawHeader(w, true);
     const float m = metric::kMargin;
 
@@ -512,6 +527,92 @@ void LauncherUi::DrawHome(const Rect& w) {
         Browse(true, DialogPurpose::Import);
 
     DrawTiles(tiles, true);
+}
+
+// The home once every edition is confirmed: no drop field, two large tiles (the European edition, then the US one), each
+// with its Gold badge and its Play button. The whole window still takes a drop; the tiles light up under it as the small
+// ones do, and "Game data" opens Settings.
+void LauncherUi::DrawReady(const Rect& w) {
+    float top = DrawHeader(w, true);
+    const float m = metric::kMargin;
+
+    // The footer, as on the home with the drop field.
+    float footerW = w.w - 2 * m - 24;
+    std::vector<std::string> disclaimer = text_.Wrap(style::kSmall, kDisclaimer, footerW);
+    std::vector<std::string> tagline = text_.Wrap(style::kSmallBold, kTagline, footerW);
+    float lh = text_.LineHeight(style::kSmall);
+    float footerH = (disclaimer.size() + tagline.size()) * lh + 18;
+    Rect footer{m, w.Bottom() - m - footerH, w.w - 2 * m, footerH};
+    canvas_.FillRound(footer, 12, colour::kPaper.WithAlpha(215));
+    float y = footer.y + 9;
+    for (const std::string& line : tagline) {
+        text_.Draw(style::kSmallBold, footer.x + 12, y, line, colour::kInk);
+        y += lh;
+    }
+    for (const std::string& line : disclaimer) {
+        text_.Draw(style::kSmall, footer.x + 12, y, line, colour::kInkSoft);
+        y += lh;
+    }
+
+    // The row above the footer: "Game data" on the left; while a drag is over the window, what letting go does.
+    const float rowH = 34;
+    Rect row{m, footer.y - metric::kGap - rowH, w.w - 2 * m, rowH};
+    float gw = ui_.ButtonWidth("Game data");
+    if (ui_.Button("game-data", {row.x, row.y, gw, rowH}, "Game data", ButtonKind::Quiet)) {
+        settingsOpen_ = true;
+        armedRemove_ = -1;
+    }
+    if (dragging_) {
+        float tx = row.x + gw + 16;
+        text_.Draw(style::kBodyBold, tx, row.y + (rowH - text_.LineHeight(style::kBodyBold)) * 0.5f,
+                   text_.Fit(style::kBodyBold, "Let go to check them", row.Right() - tx, false), colour::kInk);
+    }
+
+    // The two tiles: European on the left, US on the right.
+    Rect area{m, top, w.w - 2 * m, row.y - metric::kGap - top};
+    float tw = (area.w - metric::kGap) * 0.5f;
+    static constexpr int kOrder[2] = {1, 0};   // status_ index of the left and the right tile
+    static constexpr const char* kGames[2] = {"Sim Theme Park", "Theme Park World"};   // by status_ index
+    const float pad = 16, playH = 52, pillH = 30;
+    tileRects_[2] = Rect{};
+    for (int k = 0; k < 2; ++k) {
+        int i = kOrder[k];
+        Rect r{area.x + k * (tw + metric::kGap), area.y, tw, area.h};
+        tileRects_[i] = r;
+        TileView v;
+        v.title = kGames[i];
+        v.game = EditionTitle(kEditions[i]);
+        v.state = "Ready to play";
+        v.detail = Files(status_[i].filesPresent) + " confirmed";
+        v.accent = kAccents[i];
+        v.badge = Badge::Check;
+        v.fraction = 1;
+        v.highlight = dragging_ && dropTarget_ == i;
+        ui_.Tile(std::string("ready-") + assets::EditionName(kEditions[i]), r, v);
+
+        // Inside, at the bottom: the Gold badge, then the Play button.
+        Rect play{r.x + pad, r.Bottom() - pad - playH, r.w - 2 * pad, playH};
+        const char* goldText = "Gold Edition included";
+        float pw = std::min(play.w, text_.Width(style::kSmallBold, goldText) + 2 * 12 + 22);
+        Rect pill{r.CentreX() - pw * 0.5f, play.y - 12 - pillH, pw, pillH};
+        canvas_.Outlined(pill, pillH * 0.5f, 2, colour::kYellowSoft, colour::kInk);
+        ui_.DrawBadge(Badge::Check, pill.x + 12 + 8, pill.CentreY(), 9, 1);
+        float tx = pill.x + 12 + 22;
+        text_.Draw(style::kSmallBold, tx, pill.y + (pillH - text_.LineHeight(style::kSmallBold)) * 0.5f,
+                   text_.Fit(style::kSmallBold, goldText, pill.Right() - 10 - tx, false), colour::kInk);
+        readyPlay_[i] = play;
+        if (ui_.Button(std::string("ready-play-") + assets::EditionName(kEditions[i]), play, "Play", ButtonKind::Go,
+                       true, style::kHeadline)) {
+            playIndex_ = i;
+            choice_.edition = kEditions[i];
+            choice_.gold = status_[2].unlocked;
+            playChosen_ = true;
+            std::string err;
+            backend_.SetLastChoice(assets::EditionName(choice_.edition), err);
+        }
+    }
+    tilesShown_ = true;
+    readyShown_ = true;
 }
 
 void LauncherUi::DrawChecking(const Rect& w) {
@@ -836,6 +937,7 @@ void LauncherUi::Frame(float dt, float width, float height, float scale) {
     bool overlay = aboutOpen_ || settingsOpen_;
     ui_.SetInteractive(!overlay && !dragging_);
     tilesShown_ = false;
+    readyShown_ = false;
     DrawBackdrop(window);
     switch (screen_) {
         case Screen::Home: DrawHome(window); break;
@@ -846,6 +948,7 @@ void LauncherUi::Frame(float dt, float width, float height, float scale) {
     }
     if (overlay) {
         tilesShown_ = false;   // drops on an open box go to the field
+        readyShown_ = false;
         ui_.SetInteractive(!dragging_);
         if (settingsOpen_) DrawSettings(window);
         if (aboutOpen_) DrawAbout(window);

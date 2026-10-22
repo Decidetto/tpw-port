@@ -219,10 +219,11 @@ WindowOutcome RunLauncherWindow(ImportBackend& backend, LaunchChoice& choice, st
             // Play: this frame, before it is presented, is what the Starting screen dims (its backend is gone by then).
             if (play) behind = TakePicture(renderer);
             SDL_RenderPresent(renderer);
+            ++drawn;
             if (play) {
                 outcome = WindowOutcome::Play;
                 running = false;
-            } else if (placement.maxFrames > 0 && ++drawn >= placement.maxFrames) {
+            } else if (placement.maxFrames > 0 && drawn >= placement.maxFrames) {
                 running = false;   // --frames N: the window run ends by itself, exit 0 (Quit)
             }
         }

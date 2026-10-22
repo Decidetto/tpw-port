@@ -31,6 +31,9 @@ public:
     virtual bool RemoveEdition(assets::Edition edition, std::string& err) = 0;
     virtual std::string LastChoice() const = 0;
     virtual bool SetLastChoice(const std::string& choice, std::string& err) = 0;
+    // What the startup check removed, as the home screen's notice ("3 files of the European edition had changed ..."),
+    // or empty (assets/importer.h OpenCheck).
+    virtual std::string StartupNotice() const { return ""; }
 };
 
 class ImporterBackend : public ImportBackend {
@@ -67,6 +70,7 @@ public:
     bool RemoveEdition(assets::Edition edition, std::string& err) override;
     std::string LastChoice() const override;
     bool SetLastChoice(const std::string& choice, std::string& err) override;
+    std::string StartupNotice() const override;
 
 private:
     std::string IniPath() const;

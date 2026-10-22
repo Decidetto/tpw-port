@@ -235,6 +235,8 @@ public:
         lastChoice_ = choice;
         return true;
     }
+    std::string StartupNotice() const override { return startupNotice; }
+    std::string startupNotice;   // what the startup check "removed"
 
 private:
     std::vector<uint8_t> present_;
@@ -327,6 +329,21 @@ SDL_Event MotionEvent(float x, float y) {
     e.motion.x = x;
     e.motion.y = y;
     return e;
+}
+
+SDL_Event ButtonEvent(SDL_EventType type, float x, float y) {
+    SDL_Event e{};
+    e.type = type;
+    e.button.button = SDL_BUTTON_LEFT;
+    e.button.x = x;
+    e.button.y = y;
+    return e;
+}
+
+void FillEverything(FakeBackend& b) {
+    b.FillAll(assets::kEditionUs);
+    b.FillAll(assets::kEditionEur);
+    b.FillAll(assets::kEditionGold);
 }
 
 std::vector<std::string> g_written;
@@ -632,6 +649,18 @@ std::vector<Shot> Shots() {
                          ui.SetStartingProgress(-1.0f);
                      },
                      Screen::Starting});
+
+    // Every edition confirmed: two large tiles with their Gold badges and Play buttons, no drop field.
+    shots.push_back({"12-home-all-confirmed", metric::kStartWidth, metric::kStartHeight, FillEverything, nullptr,
+                     Screen::Home});
+
+    shots.push_back({"13-home-all-confirmed-drag-over", metric::kStartWidth, metric::kStartHeight, FillEverything,
+                     [](LauncherUi& ui, FakeBackend&, const std::function<void(int)>&) {
+                         Rect t = ui.TileRect(1);
+                         ui.HandleEvent(DropEvent(SDL_EVENT_DROP_BEGIN));
+                         ui.HandleEvent(DropEvent(SDL_EVENT_DROP_POSITION, t.CentreX(), t.CentreY()));
+                     },
+                     Screen::Home});
     return shots;
 }
 
@@ -805,6 +834,67 @@ void CheckDrops(SDL_Renderer* renderer) {
     Check(!ui.TakePlay(choice), "no play before the button");
 }
 
+// The all-confirmed home: the two tiles are the drop targets (the Gold one is gone), each Play button starts its
+// edition with the Gold rides, and the startup check's notice is shown.
+void CheckReady(SDL_Renderer* renderer) {
+    FakeBackend b;
+    FillEverything(b);
+    b.startupNotice = "3 files of the European edition had changed and were removed; drop its disc to restore them.";
+    LauncherUi ui(renderer, b);
+    auto frames = [&](int n) {
+        for (int i = 0; i < n; ++i) ui.Frame(kDt, metric::kStartWidth, metric::kStartHeight, 1);
+    };
+    frames(1);
+    Check(ui.Animating(), "all confirmed: the startup notice shows");
+    Rect eu = ui.TileRect(1), us = ui.TileRect(0);
+    Check(eu.w > 300 && us.w > 300 && eu.x < us.x, "all confirmed: two large tiles, the European one on the left");
+    Check(ui.TileRect(2).w == 0, "all confirmed: no Gold tile");
+    Rect euPlay = ui.ReadyPlayRect(1), usPlay = ui.ReadyPlayRect(0);
+    Check(euPlay.w > 0 && eu.Contains(euPlay.CentreX(), euPlay.CentreY()), "all confirmed: the European Play is in its tile");
+    Check(usPlay.w > 0 && us.Contains(usPlay.CentreX(), usPlay.CentreY()), "all confirmed: the US Play is in its tile");
+    std::printf("all confirmed at %dx%d points: European Play centre %.0f,%.0f; US Play centre %.0f,%.0f\n",
+                metric::kStartWidth, metric::kStartHeight, euPlay.CentreX(), euPlay.CentreY(), usPlay.CentreX(),
+                usPlay.CentreY());
+
+    // a drag over the European tile names it; anywhere else is still the window's drop
+    b.Queue(FakeBackend::Script());
+    ui.HandleEvent(DropEvent(SDL_EVENT_DROP_BEGIN));
+    ui.HandleEvent(DropEvent(SDL_EVENT_DROP_POSITION, eu.CentreX(), eu.CentreY()));
+    frames(1);
+    ui.HandleEvent(DropEvent(SDL_EVENT_DROP_FILE, eu.CentreX(), eu.CentreY(), "/a/eu.iso"));
+    ui.HandleEvent(DropEvent(SDL_EVENT_DROP_COMPLETE));
+    frames(3);
+    Check(b.Started().size() == 1 && b.Started()[0] == std::vector<std::string>{"/a/eu.iso"},
+          "all confirmed: a drop on a tile is imported");
+    ui.ShowScreen(LauncherUi::Screen::Home);
+    frames(1);
+
+    auto click = [&](const Rect& r) {
+        ui.HandleEvent(MotionEvent(r.CentreX(), r.CentreY()));
+        frames(1);
+        ui.HandleEvent(ButtonEvent(SDL_EVENT_MOUSE_BUTTON_DOWN, r.CentreX(), r.CentreY()));
+        frames(1);
+        ui.HandleEvent(ButtonEvent(SDL_EVENT_MOUSE_BUTTON_UP, r.CentreX(), r.CentreY()));
+        frames(1);
+    };
+    LaunchChoice choice;
+    Check(!ui.TakePlay(choice), "all confirmed: no play before a click");
+    click(ui.ReadyPlayRect(1));
+    Check(ui.TakePlay(choice) && choice.edition == assets::kEditionEur && choice.gold,
+          "all confirmed: the European Play starts the European edition with the Gold rides");
+    Check(b.LastChoice() == "eur", "all confirmed: the European choice is kept");
+    click(ui.ReadyPlayRect(0));
+    Check(ui.TakePlay(choice) && choice.edition == assets::kEditionUs && choice.gold,
+          "all confirmed: the US Play starts the US edition with the Gold rides");
+    Check(b.LastChoice() == "us", "all confirmed: the US choice is kept");
+
+    // without the Gold rides it is the home with the drop field again
+    std::string err;
+    b.RemoveEdition(assets::kEditionGold, err);
+    frames(1);
+    Check(ui.ReadyPlayRect(0).w == 0 && ui.TileRect(2).w > 0, "Gold missing: the three tiles again");
+}
+
 // The real backend over an empty data folder: the European edition counts the US Mac program as one more required
 // file from the US Mac CD until a file of the program's size is in place (the program's content is not needed here: the
 // importer, too, counts a file of an accepted size as present). The folder is made under the screens folder and
@@ -871,6 +961,7 @@ int main(int argc, char** argv) {
     if (renderer) {
         CheckButton(renderer);
         CheckDrops(renderer);
+        CheckReady(renderer);
         SDL_DestroyRenderer(renderer);
     }
     SDL_DestroySurface(scratch);

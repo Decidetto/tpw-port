@@ -19,7 +19,11 @@ build takes a few minutes. If your Mac has no CMake, `make` fetches it into the 
 folder. Nothing else is installed.
 
 `make run` opens the launcher. Drop your game disc on its window: the Mac CD, the PC CD, or a zip or disc image of
-either. The launcher checks every file and ticks off the editions it finds. Press Play: a progress bar shows while the game starts, and the launcher's window closes when the game's window appears.
+either. The launcher checks every file and ticks off the editions it finds. Press Play: a progress bar shows while the
+game starts, and the launcher's window closes when the game's window appears. Once the US, European and Gold discs are
+all checked, the window shows just two tiles, Theme Park World and Sim Theme Park, each with its own Play button. At
+every start the launcher compares each file's size and date with what it recorded, rehashes only the files that
+changed and removes any that no longer match. Check again in Settings rehashes every file.
 
 ## What you need
 

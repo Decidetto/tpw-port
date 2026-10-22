@@ -1,5 +1,5 @@
 // launcher_ui.h: the launcher's screens (launcher-design REPORT section 5): the drop field with its Browse buttons and
-// the three edition tiles; the checking log with its counter and progress bar; the result; Play with the edition
+// the three edition tiles (once all three editions are confirmed, two large tiles to play from instead); the checking log with its counter and progress bar; the result; Play with the edition
 // switch and the Gold toggles; and the Settings and About boxes. Driven by SDL3 events: mouse, wheel, Escape and the
 // drop events (DROP_BEGIN, DROP_POSITION, DROP_FILE, DROP_COMPLETE; DROP_TEXT is ignored). The window loop is
 // window.h's; the screenshot test drives this class on a software renderer with a scripted backend.
@@ -72,8 +72,11 @@ public:
     void ShowNotice(const std::string& message, bool problem);
     // Play's edition switch and Gold toggle, as if clicked.
     void ChoosePlay(assets::Edition edition, bool gold);
-    // Where the last frame drew the drop targets, in points (an empty rect when not shown).
+    // Where the last frame drew the drop targets, in points (an empty rect when not shown). Index 0 US, 1 European,
+    // 2 Gold (empty on the all-confirmed home, whose two tiles are the US and European ones).
     Rect TileRect(int index) const { return tilesShown_ ? tileRects_[index] : Rect{}; }
+    // The all-confirmed home's Play button of a tile (0 US, 1 European) in the last frame, in points (empty when not shown).
+    Rect ReadyPlayRect(int index) const { return readyShown_ ? readyPlay_[index] : Rect{}; }
 
 private:
     struct DialogInbox;
@@ -88,6 +91,7 @@ private:
     int DropTargetAt(float x, float y) const;   // 0..2 an edition tile, -1 the drop field, -2 nothing
     void RefreshStatus();
     bool AnyPlayable() const;
+    bool AllConfirmed() const;   // US, European and Gold all unlocked: the home becomes two tiles to play from
     void OpenPlay();
     TileView TileFor(int index) const;
 
@@ -95,6 +99,7 @@ private:
     float DrawHeader(const Rect& window, bool buttons);
     void DrawTiles(const Rect& row, bool dropTargets);
     void DrawHome(const Rect& window);
+    void DrawReady(const Rect& window);
     void DrawChecking(const Rect& window);
     void DrawResult(const Rect& window);
     void DrawPlay(const Rect& window);
@@ -119,6 +124,8 @@ private:
     Rect fieldRect_;           // last frame's drop targets
     Rect tileRects_[3];
     bool tilesShown_ = false;
+    Rect readyPlay_[2];
+    bool readyShown_ = false;
 
     // The editions' states, refreshed every frame.
     assets::EditionStatus status_[3];

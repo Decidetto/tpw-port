@@ -6,6 +6,7 @@
 // their discs there, and Play starts the chosen edition from the verified data folder.
 #include <SDL3/SDL.h>
 
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -20,6 +21,10 @@
 #include <execinfo.h>
 #include <sys/ucontext.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <objc/message.h>
+#include <objc/runtime.h>
+#endif
 
 #include "TPMain.h"
 #include "tpw_probe.h"
@@ -246,6 +251,58 @@ void AdoptOldSaves(const std::filesystem::path& prefPath, const std::filesystem:
     }
 }
 
+// The application menu's title (the bold name beside the Apple menu): "Theme Park World" for the European edition, "Sim
+// Theme Park" for the US one, so the menu bar names the game being played rather than the launcher (the maintainer, 2026-10-22).
+// Set through the Objective-C runtime (as platform/window.cpp sends orderBack:) on the menu SDL made when its video
+// started: [[[[NSApp mainMenu] itemAtIndex:0] submenu] setTitle:]. Nothing is created here: without a running
+// NSApplication (the --play path, whose video starts later in the game's own window code) the title is left alone and
+// the log says why; creating NSApplication this early would come before SDL's own application class. The Dock's and
+// Cmd-Tab's names cannot be changed this way: macOS takes them from the process and its bundle (CFBundleName), so they
+// stay the program's name until the launcher ships as a .app bundle.
+void NameAppMenu(const char* name) {
+#if defined(__APPLE__)
+    const char* reason = nullptr;
+    void** appVar = reinterpret_cast<void**>(dlsym(RTLD_DEFAULT, "NSApp"));
+    void* app = appVar != nullptr ? *appVar : nullptr;
+    using SendId = void* (*)(void*, SEL);
+    using SendIndex = void* (*)(void*, SEL, long);
+    using SendCount = long (*)(void*, SEL);
+    using SendText = void* (*)(void*, SEL, const char*);
+    using SendSet = void (*)(void*, SEL, void*);
+    using SendUtf8 = const char* (*)(void*, SEL);
+    void* menu = nullptr;
+    void* item = nullptr;
+    void* submenu = nullptr;
+    void* title = nullptr;
+    void* stringClass = reinterpret_cast<void*>(objc_getClass("NSString"));
+    if (app == nullptr) reason = "no application yet: the game's window starts it later";
+    else if ((menu = reinterpret_cast<SendId>(objc_msgSend)(app, sel_registerName("mainMenu"))) == nullptr)
+        reason = "the application has no main menu";
+    else if (reinterpret_cast<SendCount>(objc_msgSend)(menu, sel_registerName("numberOfItems")) < 1)
+        reason = "the main menu is empty";
+    else if ((item = reinterpret_cast<SendIndex>(objc_msgSend)(menu, sel_registerName("itemAtIndex:"), 0)) == nullptr)
+        reason = "the main menu has no first item";
+    else if ((submenu = reinterpret_cast<SendId>(objc_msgSend)(item, sel_registerName("submenu"))) == nullptr)
+        reason = "the first menu item has no submenu";
+    else if (stringClass == nullptr ||
+             (title = reinterpret_cast<SendText>(objc_msgSend)(stringClass, sel_registerName("stringWithUTF8String:"),
+                                                               name)) == nullptr)
+        reason = "no NSString for the name";
+    if (reason != nullptr) {
+        tpw::Log("app name: not changed (%s)", reason);
+        return;
+    }
+    reinterpret_cast<SendSet>(objc_msgSend)(submenu, sel_registerName("setTitle:"), title);
+    void* now = reinterpret_cast<SendId>(objc_msgSend)(submenu, sel_registerName("title"));
+    const char* text = now != nullptr ? reinterpret_cast<SendUtf8>(objc_msgSend)(now, sel_registerName("UTF8String")) : nullptr;
+    if (text != nullptr && std::strcmp(text, name) == 0) tpw::Log("app name: %s", name);
+    else tpw::Log("app name: not changed (the menu kept \"%s\")", text != nullptr ? text : "");
+#else
+    tpw::Log("app name: not changed (only the macOS menu bar has one)");
+    (void)name;
+#endif
+}
+
 // No --game: the edition comes from the data folder, through the launcher's window or --play. Fills in the game
 // folder, the edition, the user folder and the program (each unless an option named it already) and returns -1 to
 // start the game; any other value is the launcher's exit code (0 when the window was closed).
@@ -263,10 +320,24 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     }
     tpw::ui::ImporterBackend backend(prefPath);
     std::string err;
+    const auto openStart = std::chrono::steady_clock::now();
     if (!backend.Open(err)) {
         std::fprintf(stderr, "launcher: the data folder (launcher.ini in \"%s\") cannot be used: %s\n", prefPath.c_str(),
                      err.c_str());
         return 1;
+    }
+    {   // the startup check (assets/importer.h OpenCheck): what it compared, rehashed and removed, and how long it took
+        const double ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - openStart).count();
+        const tpw::assets::OpenCheck check = backend.importer()->LastOpenCheck();
+        if (!check.hadRecord)
+            tpw::Log("data folder opened in %.1f ms; startup check: no record yet, written for %llu files", ms,
+                     static_cast<unsigned long long>(check.checked));
+        else
+            tpw::Log("data folder opened in %.1f ms; startup check: %llu files compared, %llu rehashed, %llu removed", ms,
+                     static_cast<unsigned long long>(check.checked), static_cast<unsigned long long>(check.rehashed),
+                     static_cast<unsigned long long>(check.Removed()));
+        if (check.Removed() > 0) tpw::Log("startup check: %s", check.Notice().c_str());
     }
     tpw::ui::LaunchChoice choice;
     if (!play.empty()) {
@@ -317,6 +388,7 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
                  tpw::assets::EditionName(choice.edition));
     config.gameDir = backend.importer()->GameFolder(choice.edition);
     config.edition = edition;
+    NameAppMenu(us ? "Sim Theme Park" : "Theme Park World");
     if (config.userDir.empty()) {
         const std::filesystem::path saves = std::filesystem::path(backend.DataFolder()) / "saves" / (us ? "us" : "eur");
         AdoptOldSaves(prefPath, saves, us);
