@@ -22,6 +22,10 @@
 name: play
 
 on:
+  # The workflow is deliberately absent from main. A maintainer's push to this temporary branch starts it;
+  # workflow_dispatch alone cannot register a workflow that is absent from the repository's default branch.
+  push:
+    branches: [ci-play]
   workflow_dispatch:
     inputs:
       frames:
@@ -52,8 +56,8 @@ env:
   # The recipes' clicks are at pass numbers; a test run swaps at every refresh (platform/window.cpp), as
   # run_launcher.sh's runs do.
   TPW_VSYNC_EVERY_REFRESH: '1'
-  FRAMES: ${{ inputs.frames }}
-  EDITIONS: ${{ inputs.editions }}
+  FRAMES: ${{ inputs.frames || '3300' }}
+  EDITIONS: ${{ inputs.editions || 'us eur' }}
 
 jobs:
   play-windows:
@@ -76,6 +80,22 @@ jobs:
       - name: Build the launcher (Command Prompt)
         shell: cmd
         run: build.cmd TOOLS=fetch
+      # Hosted Windows has no GPU driver. Use a pinned software renderer for these playtests only;
+      # this is not bundled in the launcher, and does not change a player's graphics driver.
+      - name: Supply Mesa llvmpipe for the hosted desktop
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'mesa.7z'
+          curl.exe --fail --location --retry 3 --silent --show-error --output $archive `
+            https://github.com/pal1000/mesa-dist-win/releases/download/26.2.4/mesa3d-26.2.4-release-msvc.7z
+          if ($LASTEXITCODE -ne 0) { throw 'Mesa download failed' }
+          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '351fc8c8b695878ffb3eaa044b3ead08672a48b1a045e3c3e3975811df0f6695') { throw 'Mesa SHA-256 mismatch' }
+          $mesa = Join-Path $env:RUNNER_TEMP 'mesa'
+          & 7z x $archive "-o$mesa" -y
+          if ($LASTEXITCODE -ne 0) { throw 'Mesa extraction failed' }
+          Copy-Item (Join-Path $mesa 'x64\*.dll') build\
+          'GALLIUM_DRIVER=llvmpipe' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       # Fails: the inputs are not a whole number of passes and one or more of us and eur.
       - name: Check the inputs
         shell: pwsh
@@ -163,7 +183,7 @@ jobs:
       # same recipe. Fails: as the step above, or no "Gold rides: switched on" line (the click missed the Play button:
       # the launcher window is in the frames as launcher-frame-NNNN).
       - name: Play the US edition with Gold (the launcher window's Play)
-        if: inputs.gold
+        if: github.event_name == 'push' || inputs.gold
         shell: pwsh
         timeout-minutes: 20
         run: |
@@ -238,7 +258,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          foreach ($name in 'tpw-bundle.zip', 'tpw-data', 'tpw-frames', 'play-out') {
+          foreach ($name in 'tpw-bundle.zip', 'tpw-data', 'tpw-frames', 'play-out', 'mesa.7z', 'mesa') {
             $path = Join-Path $env:RUNNER_TEMP $name
             if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Continue }
           }
@@ -320,7 +340,7 @@ jobs:
       # With gold: the launcher's window and a click on the US tile's Play (window point 595,372 of 800 x 560), which
       # switches the Gold rides on, then the same recipe. Fails: as above, or no "Gold rides: switched on" line.
       - name: Play the US edition with Gold (the launcher window's Play)
-        if: inputs.gold
+        if: github.event_name == 'push' || inputs.gold
         timeout-minutes: 20
         run: |
           mkdir -p "$RUNNER_TEMP/tpw-frames/gold"
