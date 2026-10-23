@@ -253,6 +253,9 @@ void Usage(const char* program) {
                  "                 either, the launcher's own window opens: drop your discs on it, then press Play; the\n"
                  "                 verified files, the saves and launcher.ini are kept in the data folder (below)\n"
                  "  --play E       without the window: start edition E (us or eur) from the data folder, as Play does\n"
+                 "  --import PATH [PATH ...]  without the window: import these discs, disc images, zips, installers or\n"
+                 "                 folders into the data folder, as a drop on the window does, log what was found, and\n"
+                 "                 exit: 0 when the US, European and Gold editions are all ready, 1 otherwise\n"
                  "  --no-preload   the launcher's window reads nothing ahead while it is open (by default it reads the\n"
                  "                 game's tables and the first files of the edition last played, so Play starts sooner)\n"
                  "  --window-click X,Y@F  a scripted left click in the launcher's own window at point (X, Y) of it (it\n"
@@ -309,6 +312,7 @@ void Usage(const char* program) {
                  "                     the frame before it; the first 200; the launcher's own window's too, as\n"
                  "                     launcher-frame-NNNN.bmp)\n"
                  "  --dump-every N     with --dump-frames: save only every Nth of those frames\n"
+                 "  --dump-limit N     with --dump-frames: save at most N frames (200 by default)\n"
 
                  "  --stub-abort   abort at the first unimplemented function (for a debugger)\n"
                  "  --stub-trace   log every call of an unimplemented function, not only the first\n"
@@ -321,7 +325,7 @@ void Usage(const char* program) {
 
 // The options that take a value (main's loop), so the early look below skips their values.
 bool TakesValue(const std::string& arg) {
-    static const char* const kWithValue[] = {"--game",  "--data",        "--play",       "--program",    "--window-click",
+    static const char* const kWithValue[] = {"--game",  "--data",        "--play",       "--import",     "--program",    "--window-click",
                                              "--user",  "--edition",     "--resolution", "--aspect",     "--frames",
                                              "--click", "--drag",        "--type",       "--dump-frames", "--dump-every",
                                              "--dump-limit", "--display"};
@@ -608,6 +612,85 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     return -1;
 }
 
+// --import: the drop on the launcher's window without the window, for a terminal or a test machine with no one to drop
+// anything: the same importer on the same data folder (ChooseFromDataFolder's), its progress every ten seconds and its
+// report in the log. Returns the exit code: 0 when the US, European and Gold editions are all ready, 1 otherwise.
+int ImportFromOptions(const std::string& dataDir, const std::vector<std::string>& paths) {
+    std::string prefPath = dataDir;
+    if (prefPath.empty()) {
+        char* pref = SDL_GetPrefPath("", tpw::ui::kDataFolderName);
+        if (pref == nullptr) {
+            tpw::LogRawF("launcher: no per-user folder for the launcher's data: %s\n", SDL_GetError());
+            return 1;
+        }
+        prefPath = pref;
+        SDL_free(pref);
+    }
+    tpw::ui::ImporterBackend backend(prefPath);
+    std::string err;
+    if (!backend.Open(err)) {
+        tpw::LogRawF("launcher: the data folder (launcher.ini in \"%s\") cannot be used: %s\n", prefPath.c_str(),
+                     err.c_str());
+        return 1;
+    }
+    tpw::Log("import: into the data folder %s", backend.DataFolder().c_str());
+    for (const std::string& path : paths) tpw::Log("import: %s", path.c_str());
+    const auto start = std::chrono::steady_clock::now();
+    if (!backend.Start(paths, err)) {
+        tpw::LogRawF("launcher: --import cannot start: %s\n", err.c_str());
+        return 1;
+    }
+    auto seconds = [&start] {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    };
+    uint64_t written = 0;
+    auto take = [&written](const std::vector<tpw::assets::ImportProgress>& events) {
+        for (const tpw::assets::ImportProgress& p : events)
+            if (p.kind == tpw::assets::ImportProgress::Kind::Written) ++written;
+    };
+    double nextLine = 10.0;
+    while (backend.Running()) {
+        SDL_Delay(100);
+        take(backend.Drain());
+        if (seconds() < nextLine) continue;
+        nextLine += 10.0;
+        const tpw::assets::ImportProgress latest = backend.Latest();
+        if (latest.kind == tpw::assets::ImportProgress::Kind::Hashing)
+            tpw::Log("import: %.0f s: file %llu of %llu, %llu of %llu MB read, %llu written", seconds(),
+                     static_cast<unsigned long long>(latest.n), static_cast<unsigned long long>(latest.total),
+                     static_cast<unsigned long long>(latest.bytes >> 20),
+                     static_cast<unsigned long long>(latest.totalBytes >> 20), static_cast<unsigned long long>(written));
+        else
+            tpw::Log("import: %.0f s: opening what was given, %llu files found so far", seconds(),
+                     static_cast<unsigned long long>(latest.total));
+    }
+    const tpw::assets::ImportReport report = backend.Wait();
+    take(backend.Drain());
+    tpw::Log("import: finished in %.1f s: %s", seconds(), report.Summary().c_str());
+    tpw::Log("import: %llu files seen in %llu containers, %llu matched, %llu written, %llu already there, %llu unknown",
+             static_cast<unsigned long long>(report.entries), static_cast<unsigned long long>(report.containers),
+             static_cast<unsigned long long>(report.matched), static_cast<unsigned long long>(report.written),
+             static_cast<unsigned long long>(report.alreadyThere), static_cast<unsigned long long>(report.unknownFiles));
+    for (const std::string& error : report.errors) tpw::Log("import: error: %s", error.c_str());
+    for (const std::string& dest : report.differentVersions) tpw::Log("import: a different version (not used): %s", dest.c_str());
+    if (report.cancelled || report.aborted) tpw::Log("import: stopped before the end%s", report.aborted ? " by a write error" : "");
+    bool ready = !report.cancelled && !report.aborted;
+    for (tpw::assets::Edition edition : {tpw::assets::kEditionUs, tpw::assets::kEditionEur, tpw::assets::kEditionGold}) {
+        const tpw::assets::EditionStatus status = backend.Status(edition);
+        std::string still;
+        for (int disc = 0; disc < 3; ++disc) {
+            if (status.missing[disc] == 0) continue;
+            still += still.empty() ? "; still missing: " : ", ";
+            still += std::to_string(status.missing[disc]) + " from " +
+                     tpw::assets::SourceDiscName(static_cast<tpw::assets::DiscSource>(disc));
+        }
+        tpw::Log("import: %s: %s, %zu of %zu required files%s", tpw::assets::EditionName(edition), status.StateWord(),
+                 status.requiredPresent, status.required, still.c_str());
+        ready = ready && status.unlocked;
+    }
+    return ready ? 0 : 1;
+}
+
 // "Back to the launcher after playing": the launcher starts again, with this run's arguments (which opened its window),
 // as a process of its own, since the game's state lasts for the whole process and cannot be started twice in one. It runs
 // from main, after the log file's "exit:" line has the game's code. From tpw-port PR #22 by samueleagle91.
@@ -686,6 +769,8 @@ int LauncherMain(int argc, char** argv) {
     if (const char* dir = std::getenv("TPW_GAME_DIR")) config.gameDir = dir;
     std::filesystem::path program;   // the application the data tables are read from (platform/game_tables.cpp)
     std::string dataDir, play;       // --data, --play: the launcher's data folder (no --game)
+    std::vector<std::string> imports;   // --import: the paths to import into it, with no window
+    bool gameGiven = false;             // --game (TPW_GAME_DIR alone does not stop --import)
     if (const char* file = std::getenv("TPW_GAME_PROGRAM")) program = file;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -697,7 +782,10 @@ int LauncherMain(int argc, char** argv) {
             }
             return argv[++i];
         };
-        if (arg == "--game") config.gameDir = value();
+        if (arg == "--game") {
+            config.gameDir = value();
+            gameGiven = true;
+        }
         else if (arg == "--data") dataDir = value();
         else if (arg == "--play") {
             play = value();
@@ -705,6 +793,10 @@ int LauncherMain(int argc, char** argv) {
                 tpw::LogRawF("launcher: --play wants us or eur: %s\n", play.c_str());
                 return 2;
             }
+        }
+        else if (arg == "--import") {
+            imports.push_back(value());
+            while (i + 1 < argc && argv[i + 1][0] != '-') imports.push_back(argv[++i]);   // the paths after it
         }
         else if (arg == "--program") program = value();
         else if (arg == "--no-preload") tpw::launcher::gNoPreload = true;
@@ -832,6 +924,13 @@ int LauncherMain(int argc, char** argv) {
             Usage(argv[0]);
             return arg == "--help" || arg == "-h" ? 0 : 2;
         }
+    }
+    if (!imports.empty()) {
+        if (gameGiven || !play.empty()) {
+            tpw::LogRawF("launcher: --import fills the launcher's data folder and exits; it takes no --game or --play\n");
+            return 2;
+        }
+        return ImportFromOptions(dataDir, imports);
     }
     if (config.gameDir.empty()) {
         const int exitCode = ChooseFromDataFolder(config, program, dataDir, play);
