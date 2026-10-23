@@ -432,7 +432,8 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     // --no-movies; "Back to the launcher after playing" opens the launcher again when a game started from its window
     // quits (ReopenLauncher).
     for (const char* key : {tpw::ui::kSkipIntroKey, tpw::ui::kBackToLauncherKey, tpw::ui::kVisitorArrivalsKey,
-                            tpw::ui::kVisitorLimitKey, tpw::ui::kSmoothZoomKey}) {
+                            tpw::ui::kVisitorLimitKey, tpw::ui::kSmoothZoomKey,
+                            tpw::ui::kInterfaceSizeKey}) {
         const std::string value = backend.Setting(key);
         std::string ignored;
         if (!value.empty()) tpw::ui::ImporterBackend::SaveIniExtra(prefPath, key, value, ignored);
@@ -451,6 +452,11 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     // The Settings box's "Smooth wheel zoom" (Will_HandleCameraMessages); off, the original's step, by default.
     gUISmoothWheelZoom = backend.Setting(tpw::ui::kSmoothZoomKey) == "1" ? 1 : 0;
     if (gUISmoothWheelZoom != 0) tpw::Log("smooth wheel zoom (the launcher's Settings)");
+    {   // the Settings box's interface size (UI_SetRealScreenRez)
+        const std::string size = backend.Setting(tpw::ui::kInterfaceSizeKey);
+        gUIScale = size == "85" ? 0.85f : size == "70" ? 0.7f : 1.0f;
+        if (gUIScale != 1.0f) tpw::Log("interface size: %s%%", size.c_str());
+    }
 #endif
     if (choice.skipIntro) {
         config.movies = false;
