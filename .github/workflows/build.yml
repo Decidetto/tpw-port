@@ -122,7 +122,15 @@ jobs:
           if-no-files-found: ignore
 
   macos:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -130,12 +138,14 @@ jobs:
           submodules: recursive
       - name: Build the launcher
         run: make
+      - name: Start the launcher (--version)
+        run: build/tpw_launcher --version
       - name: Build and run the tests
         run: make test
       # One file, build/tpw_launcher (the zip drops its executable bit: chmod +x after unzipping).
       - name: Keep the launcher
         uses: actions/upload-artifact@v4
         with:
-          name: tpw_launcher-macos-arm64
+          name: tpw_launcher-${{ matrix.os }}-${{ matrix.arch }}
           path: build/tpw_launcher
           if-no-files-found: error

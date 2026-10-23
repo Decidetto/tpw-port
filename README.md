@@ -84,7 +84,7 @@ Every function of the game is translated. Both editions play from the lobby into
 stand-ins. All of them belong to EA's online service, which is gone (the lobby's globe), or to the Mac Sound Manager's
 channel layer. None of them is reached in play.
 
-Known problem: clicking the globe in the lobby crashes the game.
+The lobby's online world is unavailable: the original service is gone.
 
 ## For developers
 
