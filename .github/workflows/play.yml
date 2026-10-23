@@ -52,8 +52,8 @@ permissions:
 
 env:
   # This temporary branch plays the exact binaries from the successful clean build/test matrix.
-  BUILD_RUN_ID: '39975324599'
-  BUILD_SHA: e5a83f531a9b8702be6e6041a48bfc311d157b62
+  BUILD_RUN_ID: '39985187927'
+  BUILD_SHA: a05cb8b4828ee825b533111a001917c9b8a72f8a
   BUNDLE_URL: https://archive.org/download/sim-theme-park-aka-theme-park-world-1999-gold-edition-cross-platform-eur-na/Sim%20Theme%20Park%20AKA%20Theme%20Park%20World%20%281999%29%20Gold%20Edition%20%28Cross-Platform%20EUR%2BNA%29.zip
   BUNDLE_SIZE: '710280375'
   BUNDLE_SHA256: 397e0571bab0259d4048a303e8be078023c86f0c2d9a31ba7aa0da1e053f2804
