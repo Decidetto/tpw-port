@@ -1,0 +1,372 @@
+# Plays the game on GitHub's runners: builds the launcher, fetches the public game bundle from archive.org onto the
+# runner, imports it into a data folder with the launcher's --import, and plays each edition through the easy-park
+# recipe of devtools/run_launcher.sh (lobby, new player, the first park, the Park Information panel), keeping only
+# frames and the launcher's logs.
+#
+# TEMPORARY: this workflow lives on the ci-play branch only, never on main, and runs only when started by hand
+# (Actions, "play", Run workflow). The bundle is the maintainer's own public upload on archive.org (item
+# sim-theme-park-aka-theme-park-world-1999-gold-edition-cross-platform-eur-na: one zip holding one hybrid disc image,
+# "Sim Theme Park All Editions", with the US Mac CD, the European PC CD and the PC Gold CD). The game's files exist
+# only on the runner for the job's life: no cache, no artifact and no commit of them, and the last step deletes the
+# bundle and the data folder (if: always()) although the runner is discarded anyway. The artifacts are the frames,
+# as png, and the logs.
+#
+# The bundle's size and its SHA-1 and MD5 are archive.org's metadata
+# (https://archive.org/metadata/sim-theme-park-aka-theme-park-world-1999-gold-edition-cross-platform-eur-na,
+# 2026-10-23); a local copy with that SHA-1 and MD5 gave the SHA-256 below. A new upload changes all three.
+#
+# The recipe: run_launcher.sh's 4:3 easy-park clicks at 2048 x 1536 game pixels (macOS), the same halved at
+# 1024 x 768 (Windows: the runner's only OpenGL is Microsoft's GDI Generic 1.1, whose largest texture is 1024 pixels,
+# so the game would fall back to 1024 x 768 anyway). Both click tables were checked by frames on a Mac on 2026-10-23.
+# The clicks are at fixed passes up to 2850, so a "frames" input below 2900 ends the run before Park Information.
+name: play
+
+on:
+  workflow_dispatch:
+    inputs:
+      frames:
+        description: Passes of the game's main loop for each run (the recipe's own count is 3300)
+        type: string
+        default: '3300'
+      editions:
+        description: Editions to play, separated by spaces (us, eur)
+        type: string
+        default: us eur
+      gold:
+        description: Also play the US edition from the launcher window's Play, which switches the Gold rides on
+        type: boolean
+        default: false
+
+# One run per branch at a time; a second one started by hand waits for the first.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  BUNDLE_URL: https://archive.org/download/sim-theme-park-aka-theme-park-world-1999-gold-edition-cross-platform-eur-na/Sim%20Theme%20Park%20AKA%20Theme%20Park%20World%20%281999%29%20Gold%20Edition%20%28Cross-Platform%20EUR%2BNA%29.zip
+  BUNDLE_SIZE: '710280375'
+  BUNDLE_SHA256: 397e0571bab0259d4048a303e8be078023c86f0c2d9a31ba7aa0da1e053f2804
+  # The recipes' clicks are at pass numbers; a test run swaps at every refresh (platform/window.cpp), as
+  # run_launcher.sh's runs do.
+  TPW_VSYNC_EVERY_REFRESH: '1'
+  FRAMES: ${{ inputs.frames }}
+  EDITIONS: ${{ inputs.editions }}
+
+jobs:
+  play-windows:
+    strategy:
+      fail-fast: false   # one image failing must not hide the other's result
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      # Fails: never (git config).
+      - name: Keep line endings as stored
+        run: git config --global core.autocrlf false
+      # Fails: the checkout or a submodule cannot be fetched.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      # Fails: build.ps1's exit codes (win-bootstrap): 10 not 64-bit or no curl/tar, 20 a tool's download, 21 its
+      # checksum, 22 its unpacking, 30 configure, 40 build. Its logs are in build\logs\ (kept below on failure).
+      - name: Build the launcher (Command Prompt)
+        shell: cmd
+        run: build.cmd TOOLS=fetch
+      # Fails: the inputs are not a whole number of passes and one or more of us and eur.
+      - name: Check the inputs
+        shell: pwsh
+        run: |
+          if ($env:FRAMES -notmatch '^[0-9]+$') { throw "frames is not a whole number: $env:FRAMES" }
+          $eds = -split $env:EDITIONS
+          if ($eds.Count -eq 0) { throw 'editions is empty' }
+          foreach ($e in $eds) { if ($e -notin 'us', 'eur') { throw "editions wants us and eur only: $e" } }
+      # Fails: curl.exe gives up after three tries (archive.org down or refusing, a storage node gone), the server
+      # answers an HTTP error (--fail), or the file is not the bundle's size. archive.org answers with a redirect to a
+      # storage node (--location). The speed and the time are printed for the first run's record.
+      - name: Fetch the bundle from archive.org
+        shell: pwsh
+        timeout-minutes: 45
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'tpw-bundle.zip'
+          curl.exe --fail --location --retry 3 --retry-delay 10 --silent --show-error --output $zip `
+            --write-out 'fetched %{size_download} bytes in %{time_total} s, %{speed_download} bytes/s, from %{url_effective}\n' `
+            $env:BUNDLE_URL
+          if ($LASTEXITCODE -ne 0) { throw "curl.exe exited with $LASTEXITCODE" }
+          $size = (Get-Item -LiteralPath $zip).Length
+          if ($size -ne [int64]$env:BUNDLE_SIZE) { throw "the bundle is $size bytes, not $env:BUNDLE_SIZE" }
+      # Fails: the SHA-256 differs from the one above (a new upload or a damaged download).
+      - name: Check the bundle's SHA-256
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'tpw-bundle.zip'
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Output "SHA-256 $hash"
+          if ($hash -ne $env:BUNDLE_SHA256) { throw "SHA-256 mismatch: $hash, expected $env:BUNDLE_SHA256" }
+      # The launcher's --import, with no window: the drop import on the given zip, into --data's folder. Fails: the
+      # launcher exits 1 (an edition not ready: "import: us: ..." and so on in the output say how many files each
+      # still misses, "import: error: ..." each error) or 2 (an option it does not know: an older launcher), or it
+      # runs past the step's time.
+      - name: Import the bundle (--import)
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'tpw-bundle.zip'
+          $data = Join-Path $env:RUNNER_TEMP 'tpw-data'
+          $out = Join-Path $env:RUNNER_TEMP 'play-out'
+          New-Item -ItemType Directory -Force -Path $data, $out | Out-Null
+          $p = Start-Process -FilePath build\tpw_launcher.exe -ArgumentList '--data', $data, '--import', $zip `
+               -NoNewWindow -Wait -PassThru `
+               -RedirectStandardOutput (Join-Path $out 'import-out.txt') -RedirectStandardError (Join-Path $out 'import-err.txt')
+          Get-Content (Join-Path $out 'import-out.txt'), (Join-Path $out 'import-err.txt')
+          if ($p.ExitCode -ne 0) { throw "tpw_launcher.exe --import exited with $($p.ExitCode)" }
+      # Each edition with --play (no launcher window) through the recipe, in a window (--windowed: no full-screen mode
+      # change on the runner's desktop) on screen 0 (the runner's only one, about 1024 x 768). Fails: the launcher
+      # exits other than 0 (a crash, "--play E: N of M required files", a renderer it cannot use), it is still running
+      # after 15 minutes (killed), or its output has no "0 of 158 stand-ins were reached" (the game called a function
+      # that is not wired up yet). The frames are every 150th that differs from the one before (about 22).
+      - name: Play each edition (--play)
+        shell: pwsh
+        timeout-minutes: 40
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'tpw-data'
+          $out = Join-Path $env:RUNNER_TEMP 'play-out'
+          $recipe = '--click', '663,60@200', '--type', 'Tess@230', '--click', '709,283@300', '--click', '71,588@800',
+                    '--click', '130,707@2300', '--click', '173,596@2500', '--click', '252,176@2700', '--click', '598,100@2850'
+          foreach ($e in -split $env:EDITIONS) {
+            $frames = Join-Path $env:RUNNER_TEMP "tpw-frames\$e"
+            New-Item -ItemType Directory -Force -Path $frames | Out-Null
+            $launch = @('--data', $data, '--play', $e, '--mute', '--no-movies', '--windowed', '--display', '0',
+                      '--aspect', '4:3', '--resolution', '1024x768') + $recipe +
+                    @('--frames', $env:FRAMES, '--dump-frames', $frames, '--dump-every', '150')
+            $so = Join-Path $out "play-$e-out.txt"; $se = Join-Path $out "play-$e-err.txt"
+            Write-Output "tpw_launcher.exe $($launch -join ' ')"
+            $p = Start-Process -FilePath build\tpw_launcher.exe -ArgumentList $launch -NoNewWindow -PassThru `
+                 -RedirectStandardOutput $so -RedirectStandardError $se
+            $null = $p.Handle   # keeps the process handle, so ExitCode is there after the wait
+            if (-not $p.WaitForExit(15 * 60 * 1000)) { $p.Kill(); throw "--play $e still running after 15 minutes" }
+            Get-Content $so, $se | Select-Object -Last 15
+            if ($p.ExitCode -ne 0) { throw "--play $e exited with $($p.ExitCode)" }
+            # The output files and this run's log file in the data folder (the newest), in case the output is empty.
+            $texts = @($so, $se) + @(Get-ChildItem -LiteralPath (Join-Path $data 'logs') -Filter *.log |
+                                     Sort-Object LastWriteTime | Select-Object -Last 1 -ExpandProperty FullName)
+            if (-not (Select-String -LiteralPath $texts -SimpleMatch 'launcher: 0 of 158 stand-ins were reached' -Quiet)) {
+              throw "--play ${e}: no '0 of 158 stand-ins were reached' line"
+            }
+            Write-Output "--play ${e}: exit 0, 0 of 158 stand-ins, $((Get-ChildItem $frames -Filter *.bmp).Count) frames"
+          }
+      # With gold: the launcher's window (no --play) and a click on the US tile's Play (window point 595,372 of its
+      # 800 x 560), which starts the US edition with the Gold rides switched on (all three editions ready), then the
+      # same recipe. Fails: as the step above, or no "Gold rides: switched on" line (the click missed the Play button:
+      # the launcher window is in the frames as launcher-frame-NNNN).
+      - name: Play the US edition with Gold (the launcher window's Play)
+        if: inputs.gold
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'tpw-data'
+          $out = Join-Path $env:RUNNER_TEMP 'play-out'
+          $frames = Join-Path $env:RUNNER_TEMP 'tpw-frames\gold'
+          New-Item -ItemType Directory -Force -Path $frames | Out-Null
+          $launch = @('--data', $data, '--window-click', '595,372@30', '--mute', '--no-movies', '--windowed', '--display', '0',
+                    '--aspect', '4:3', '--resolution', '1024x768',
+                    '--click', '663,60@200', '--type', 'Tess@230', '--click', '709,283@300', '--click', '71,588@800',
+                    '--click', '130,707@2300', '--click', '173,596@2500', '--click', '252,176@2700', '--click', '598,100@2850',
+                    '--frames', $env:FRAMES, '--dump-frames', $frames, '--dump-every', '150')
+          $so = Join-Path $out 'play-gold-out.txt'; $se = Join-Path $out 'play-gold-err.txt'
+          Write-Output "tpw_launcher.exe $($launch -join ' ')"
+          $p = Start-Process -FilePath build\tpw_launcher.exe -ArgumentList $launch -NoNewWindow -PassThru `
+               -RedirectStandardOutput $so -RedirectStandardError $se
+          $null = $p.Handle
+          if (-not $p.WaitForExit(15 * 60 * 1000)) { $p.Kill(); throw 'the Gold run is still running after 15 minutes' }
+          Get-Content $so, $se | Select-Object -Last 15
+          if ($p.ExitCode -ne 0) { throw "the Gold run exited with $($p.ExitCode)" }
+          $texts = @($so, $se) + @(Get-ChildItem -LiteralPath (Join-Path $data 'logs') -Filter *.log |
+                                   Sort-Object LastWriteTime | Select-Object -Last 1 -ExpandProperty FullName)
+          if (-not (Select-String -LiteralPath $texts -SimpleMatch 'Gold rides: switched on' -Quiet)) {
+            throw 'the Gold run: no "Gold rides: switched on" line (the window click missed Play?)'
+          }
+          if (-not (Select-String -LiteralPath $texts -SimpleMatch 'launcher: 0 of 158 stand-ins were reached' -Quiet)) {
+            throw "the Gold run: no '0 of 158 stand-ins were reached' line"
+          }
+      # The frames as png, through Windows' own System.Drawing (Windows PowerShell 5.1; the embeddable Python has no
+      # Pillow). Fails: never (a frame that cannot be read is said and skipped; the bmp files are not kept).
+      - name: Convert the frames to png
+        if: always()
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $root = Join-Path $env:RUNNER_TEMP 'tpw-frames'
+          $out = Join-Path $env:RUNNER_TEMP 'play-out\frames'
+          if (Test-Path -LiteralPath $root) {
+            foreach ($bmp in Get-ChildItem -LiteralPath $root -Recurse -Filter *.bmp) {
+              $dir = Join-Path $out $bmp.Directory.Name
+              New-Item -ItemType Directory -Force -Path $dir | Out-Null
+              try {
+                $img = [System.Drawing.Image]::FromFile($bmp.FullName)
+                $img.Save((Join-Path $dir ($bmp.BaseName + '.png')), [System.Drawing.Imaging.ImageFormat]::Png)
+                $img.Dispose()
+              } catch { Write-Output "not converted: $($bmp.FullName): $_" }
+            }
+          }
+      # The frames (png), the launcher's output and the data folder's logs\ (the run logs, game files none). Fails:
+      # never for missing files (an early red step leaves fewer).
+      - name: Keep the frames and the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/play-out/
+            ${{ runner.temp }}/tpw-data/logs/
+          if-no-files-found: ignore
+          retention-days: 14
+      # Fails: never for files that are there (only for nothing given: the build is red).
+      - name: Keep the build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.os }}
+          path: build/logs/
+          if-no-files-found: ignore
+      # The bundle, the data folder (the imported game files) and the frames, deleted whatever happened above. Fails:
+      # never (a file still open is said, and the runner is discarded anyway).
+      - name: Delete the bundle and the game files
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($name in 'tpw-bundle.zip', 'tpw-data', 'tpw-frames', 'play-out') {
+            $path = Join-Path $env:RUNNER_TEMP $name
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Continue }
+          }
+          Get-ChildItem -LiteralPath $env:RUNNER_TEMP | Select-Object -ExpandProperty Name
+
+  play-macos:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      # Fails: the checkout or a submodule cannot be fetched.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      # Fails: configure or build errors (make's output).
+      - name: Build the launcher
+        run: make
+      # Fails: the inputs are not a whole number of passes and one or more of us and eur.
+      - name: Check the inputs
+        run: |
+          [[ "$FRAMES" =~ ^[0-9]+$ ]] || { echo "frames is not a whole number: $FRAMES"; exit 1; }
+          [ -n "$EDITIONS" ] || { echo 'editions is empty'; exit 1; }
+          for e in $EDITIONS; do
+            case "$e" in us|eur) ;; *) echo "editions wants us and eur only: $e"; exit 1 ;; esac
+          done
+      # Fails: curl gives up after three tries, the server answers an HTTP error (--fail), or the file is not the
+      # bundle's size. The redirect to a storage node is followed (--location); the speed and the time are printed.
+      - name: Fetch the bundle from archive.org
+        timeout-minutes: 45
+        run: |
+          curl --fail --location --retry 3 --retry-delay 10 --silent --show-error --output "$RUNNER_TEMP/tpw-bundle.zip" \
+            --write-out 'fetched %{size_download} bytes in %{time_total} s, %{speed_download} bytes/s, from %{url_effective}\n' \
+            "$BUNDLE_URL"
+          size=$(stat -f %z "$RUNNER_TEMP/tpw-bundle.zip")
+          [ "$size" = "$BUNDLE_SIZE" ] || { echo "the bundle is $size bytes, not $BUNDLE_SIZE"; exit 1; }
+      # Fails: the SHA-256 differs from the one above.
+      - name: Check the bundle's SHA-256
+        run: |
+          hash=$(shasum -a 256 "$RUNNER_TEMP/tpw-bundle.zip" | cut -d ' ' -f 1)
+          echo "SHA-256 $hash"
+          [ "$hash" = "$BUNDLE_SHA256" ] || { echo "SHA-256 mismatch: $hash, expected $BUNDLE_SHA256"; exit 1; }
+      # Fails: the launcher exits 1 (an edition not ready; the "import:" lines say what is missing) or 2 (an option it
+      # does not know), or it runs past the step's time.
+      - name: Import the bundle (--import)
+        timeout-minutes: 15
+        run: |
+          mkdir -p "$RUNNER_TEMP/tpw-data" "$RUNNER_TEMP/play-out"
+          set +e
+          build/tpw_launcher --data "$RUNNER_TEMP/tpw-data" --import "$RUNNER_TEMP/tpw-bundle.zip" \
+            > "$RUNNER_TEMP/play-out/import.txt" 2>&1
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/play-out/import.txt"
+          [ $rc -eq 0 ] || { echo "tpw_launcher --import exited with $rc"; exit 1; }
+      # Each edition with --play through run_launcher.sh's 4:3 recipe at 2048 x 1536, exactly as the script runs it
+      # (its defaults --windowed --aspect 4:3 --resolution 2048x1536, without its --background and its
+      # --display builtin, which name a MacBook's screen), in a window on screen 0 (the runner's only one; the game is
+      # fitted to it and renders offscreen at 2048 x 1536). Fails: the launcher exits other than 0, runs past the step's
+      # time, or its output has no "0 of 158 stand-ins were reached".
+      - name: Play each edition (--play)
+        timeout-minutes: 40
+        run: |
+          for e in $EDITIONS; do
+            mkdir -p "$RUNNER_TEMP/tpw-frames/$e"
+            set +e
+            build/tpw_launcher --data "$RUNNER_TEMP/tpw-data" --play "$e" --mute --no-movies --windowed --display 0 \
+              --aspect 4:3 --resolution 2048x1536 \
+              --click 1326,121@200 --type Tess@230 --click 1418,566@300 --click 143,1177@800 --click 261,1414@2300 \
+              --click 346,1192@2500 --click 504,353@2700 --click 1196,200@2850 \
+              --frames "$FRAMES" --dump-frames "$RUNNER_TEMP/tpw-frames/$e" --dump-every 150 \
+              > "$RUNNER_TEMP/play-out/play-$e.txt" 2>&1
+            rc=$?
+            set -e
+            tail -n 15 "$RUNNER_TEMP/play-out/play-$e.txt"
+            [ $rc -eq 0 ] || { echo "--play $e exited with $rc"; exit 1; }
+            grep -qF 'launcher: 0 of 158 stand-ins were reached' "$RUNNER_TEMP/play-out/play-$e.txt" \
+              || { echo "--play $e: no '0 of 158 stand-ins were reached' line"; exit 1; }
+            echo "--play $e: exit 0, 0 of 158 stand-ins, $(find "$RUNNER_TEMP/tpw-frames/$e" -name "*.bmp" | wc -l | tr -d ' ') frames"
+          done
+      # With gold: the launcher's window and a click on the US tile's Play (window point 595,372 of 800 x 560), which
+      # switches the Gold rides on, then the same recipe. Fails: as above, or no "Gold rides: switched on" line.
+      - name: Play the US edition with Gold (the launcher window's Play)
+        if: inputs.gold
+        timeout-minutes: 20
+        run: |
+          mkdir -p "$RUNNER_TEMP/tpw-frames/gold"
+          set +e
+          build/tpw_launcher --data "$RUNNER_TEMP/tpw-data" --window-click 595,372@30 --mute --no-movies --windowed \
+            --display 0 --aspect 4:3 --resolution 2048x1536 \
+            --click 1326,121@200 --type Tess@230 --click 1418,566@300 --click 143,1177@800 --click 261,1414@2300 \
+            --click 346,1192@2500 --click 504,353@2700 --click 1196,200@2850 \
+            --frames "$FRAMES" --dump-frames "$RUNNER_TEMP/tpw-frames/gold" --dump-every 150 \
+            > "$RUNNER_TEMP/play-out/play-gold.txt" 2>&1
+          rc=$?
+          set -e
+          tail -n 15 "$RUNNER_TEMP/play-out/play-gold.txt"
+          [ $rc -eq 0 ] || { echo "the Gold run exited with $rc"; exit 1; }
+          grep -qF 'Gold rides: switched on' "$RUNNER_TEMP/play-out/play-gold.txt" \
+            || { echo 'the Gold run: no "Gold rides: switched on" line (the window click missed Play?)'; exit 1; }
+          grep -qF 'launcher: 0 of 158 stand-ins were reached' "$RUNNER_TEMP/play-out/play-gold.txt" \
+            || { echo "the Gold run: no '0 of 158 stand-ins were reached' line"; exit 1; }
+      # The frames as png through macOS's sips. Fails: never (a frame that cannot be converted is said and skipped).
+      - name: Convert the frames to png
+        if: always()
+        run: |
+          [ -d "$RUNNER_TEMP/tpw-frames" ] || exit 0
+          for dir in "$RUNNER_TEMP"/tpw-frames/*; do
+            name=$(basename "$dir")
+            mkdir -p "$RUNNER_TEMP/play-out/frames/$name"
+            for bmp in "$dir"/*.bmp; do
+              [ -e "$bmp" ] || continue
+              sips -s format png "$bmp" --out "$RUNNER_TEMP/play-out/frames/$name/$(basename "$bmp" .bmp).png" \
+                > /dev/null || echo "not converted: $bmp"
+            done
+          done
+      # The frames (png), the launcher's output and the data folder's logs/. Fails: never for missing files.
+      - name: Keep the frames and the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-macos-15
+          path: |
+            ${{ runner.temp }}/play-out/
+            ${{ runner.temp }}/tpw-data/logs/
+          if-no-files-found: ignore
+          retention-days: 14
+      # The bundle, the data folder and the frames, deleted whatever happened above. Fails: never.
+      - name: Delete the bundle and the game files
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/tpw-bundle.zip" "$RUNNER_TEMP/tpw-data" "$RUNNER_TEMP/tpw-frames" "$RUNNER_TEMP/play-out"
+          ls -a "$RUNNER_TEMP"
