@@ -13,6 +13,12 @@ inline constexpr const char* kProductName = "STP/TPW Launcher";
 // The product name for the per-user data folder (SDL_GetPrefPath's application name; on macOS
 // ~/Library/Application Support/STP-TPW Launcher). The same words without the slash.
 inline constexpr const char* kDataFolderName = "STP-TPW Launcher";
+// The launcher's version, as a player quotes it in a bug report: launcher/VERSION.txt, which CMakeLists.txt reads.
+#ifdef TPW_LAUNCHER_VERSION
+inline constexpr const char* kLauncherVersion = TPW_LAUNCHER_VERSION;
+#else
+inline constexpr const char* kLauncherVersion = "unknown";
+#endif
 // How the games are mentioned: descriptively, never as a logo (launcher-design section 5, "Trademark naming").
 inline constexpr const char* kTagline =
     "An unofficial port for playing your own copy of Sim Theme Park (Mac) and Theme Park World (PC).";

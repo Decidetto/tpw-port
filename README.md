@@ -60,9 +60,10 @@ rehashes only the files that changed and removes any that no longer match. Check
 - No patches. The port is built from the last Mac patch (2.04b3) and reads only the game's data files.
 
 Your checked game files and your saves live in `~/Library/Application Support/STP-TPW Launcher` on a Mac and in
-`%APPDATA%\STP-TPW Launcher` on Windows. `make clean` never touches that folder. On Windows the launcher has no
-console: its log goes to launcher.log in that folder, unless its output is redirected
-(`build\tpw_launcher.exe 2> log.txt`).
+`%APPDATA%\STP-TPW Launcher` on Windows. `make clean` never touches that folder. Each run's log goes to its logs folder
+(launcher-YYYYMMDD-HHMMSS.log, the 10 most recent runs kept; the About box's Show logs button opens it), and
+`tpw_launcher --version` prints the launcher's version. On Windows the launcher has no console: what it prints goes to
+launcher.log in that folder too, unless its output is redirected (`build\tpw_launcher.exe 2> log.txt`).
 
 ## Where it stands
 
@@ -82,8 +83,8 @@ on the Mac, bugs included. This repository adds what it takes to play:
 - launcher/: the program (the launcher's window, the options, the game's start-up) and the generated stand-ins for the
   names nothing defines yet.
 - platform/: the Mac Toolbox, Sound Sprockets, QuickTime and the game's Windows-style shims, done on SDL3, OpenGL and
-  CoreText.
-- overrides/: the port's fixes, 60 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what
+  CoreText (on Windows, stb_truetype in place of CoreText).
+- overrides/: the port's fixes, 89 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what
   the port does and why. Each file there is built in place of the tpw-decomp file of the same path. Headers are read
   from a copy of tpw-decomp's headers in the build folder with the overridden ones laid over it.
 
@@ -195,6 +196,29 @@ on a machine that has room).
 devtools/run_launcher.sh passes --aspect 4:3 and --resolution 2048x1536 unless its options name them, because the
 scripted clicks of the test recipes are 4:3 game pixels at 2048 x 1536; a widescreen test run passes --aspect 16:9 and
 moves its clicks on right-anchored and centred panels (the script's header has the widescreen recipes for the easy park).
+
+## Contributing
+
+Pull requests are welcome here, for anything: fixes, other systems (Linux, for example), build changes, tools. The rules:
+
+- The tpw-decomp submodule is never touched. Its pointer stays at the upstream commit.
+- A changed game source file is a whole-file copy under overrides/ at the same path, with a row in FIXES.md: what the Mac
+  does, what the port does and why.
+- Host code for another system goes under platform/ and launcher/, behind that system's macro.
+- Test aids stay out of a pull request.
+- One concern per commit.
+
+How a change lands: both public repositories are exported from one private working tree, so a pull request is not merged on
+GitHub. An accepted change is re-landed in that tree (changes to game files as `#ifdef TPW_PORT_FIX` blocks, which the
+export turns into the files under overrides/) and appears in the next export, with the contributor credited in the commit
+message and in FIXES.md. The pull request is then closed. tpw-decomp itself takes no pull requests.
+
+Contributors: samueleagle91 (spamaerie on Discord) made the Windows build (pull request #1).
+
+Issues are welcome too. A useful bug report says which edition you play (US, European or Gold), attaches the launcher's newest
+log (`~/Library/Application Support/STP-TPW Launcher/logs` on a Mac, `%APPDATA%\STP-TPW Launcher\logs` on Windows; its
+first lines name the launcher's version, the system's version and the machine) and says what you clicked before it went
+wrong.
 
 ## See also
 

@@ -12,6 +12,7 @@ endif()
 
 add_compile_options(-Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fwrapv)
 add_compile_definitions(TPW_PORT_FIX)
+# The WIN32 parts of this file: Windows port contributed by samueleagle91 (tpw-port PR #1).
 if(WIN32)
   # The C++ runtime (libc++, libunwind) and winpthreads are linked into each program: a player's machine has none of the
   # toolchain's DLLs. Windows' own C runtime (the UCRT) is part of the system.
@@ -152,6 +153,7 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
     # platform/gdi.cpp draws the signs' text with CoreText into a CoreGraphics bitmap.
     target_link_libraries(tpw_platform PUBLIC "-framework CoreText" "-framework CoreGraphics" "-framework CoreFoundation" objc)
   elseif(WIN32)
+    # The WIN32 parts of this file: Windows port contributed by samueleagle91 (tpw-port PR #1).
     # The signs' text is drawn with stb_truetype (third_party/stb, platform/gdi_text_win.cpp) in place of CoreText
     # (platform/gdi_text.cpp). The POSIX calls MinGW lacks come from platform/win: its headers, and posix_win.h ahead of
     # every file. The sockets are Windows' (platform/winsock.cpp), and gluBuild2DMipmaps, in the Mac's OpenGL framework,
@@ -187,6 +189,18 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
   if(WIN32)
     target_include_directories(tpw_launcher_objects PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/platform/win)   # dlfcn.h
   endif()
+  # The build the log file's first line and --version name: `git describe` of this tree when configured, "unknown" when
+  # there is no git or no repository (a source archive). Only ever a hint for a bug report; never fails the build.
+  set(TPW_LAUNCHER_BUILD unknown)
+  find_package(Git QUIET)
+  if(GIT_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --dirty WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                    OUTPUT_VARIABLE tpw_describe OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE tpw_describe_result ERROR_QUIET)
+    if(tpw_describe_result EQUAL 0 AND tpw_describe MATCHES "^[A-Za-z0-9._+-]+$")
+      set(TPW_LAUNCHER_BUILD ${tpw_describe})
+    endif()
+  endif()
+  target_compile_definitions(tpw_launcher_objects PRIVATE TPW_LAUNCHER_BUILD="${TPW_LAUNCHER_BUILD}")
 
   # SDL3 and zlib's inflate (src/bullfrog/LbZLib.cpp) come from the static libraries built here (--provides), so the
   # generator must not stand in for them; nor for the launcher window's library and the importer under it.
@@ -251,6 +265,11 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
     set_target_properties(tpw_platform_tests PROPERTIES EXCLUDE_FROM_ALL ON)
     set_tests_properties(platform PROPERTIES DISABLED ON)
   endif()
+  # The launcher's log file (platform/log_file.cpp): its header, its name and the ten-file rotation, in a temporary folder.
+  add_executable(tpw_log_tests platform/tests/log_tests.cpp)
+  target_include_directories(tpw_log_tests PRIVATE ${TPW_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/platform ${TPW_DECOMP_DIR}/platform)
+  target_link_libraries(tpw_log_tests PRIVATE tpw_platform)
+  add_test(NAME log_file COMMAND tpw_log_tests)
 
   # Where the intro films are drawn (include/platform/filmbox.h): pure arithmetic, no game or window.
   add_executable(tpw_host_filmbox ${TPW_DECOMP_DIR}/tests/host_filmbox.cpp)
@@ -291,6 +310,15 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
   target_include_directories(tpw_launcher_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/launcher/ui)
   target_include_directories(tpw_launcher_ui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb)
   target_link_libraries(tpw_launcher_ui PUBLIC SDL3::SDL3 tpw_assets ZLIB::ZLIB)
+  # The launcher's version: launcher/VERSION.txt is the one place it is written (not launcher/VERSION: launcher/ is an
+  # include folder, and on a case-blind disk that name would stand in for the C++ header <version>). The window's corner,
+  # the About box, --version and the log file's first line all take it from here.
+  file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/launcher/VERSION.txt TPW_LAUNCHER_VERSION LIMIT_COUNT 1)
+  if(NOT TPW_LAUNCHER_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "launcher/VERSION.txt: \"${TPW_LAUNCHER_VERSION}\" is not a version like 0.0.2")
+  endif()
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/launcher/VERSION.txt)
+  target_compile_definitions(tpw_launcher_ui PUBLIC TPW_LAUNCHER_VERSION="${TPW_LAUNCHER_VERSION}")
   # The About box's versions (launcher/ui/versions.cpp) come from the libraries' own headers: libjpeg's and FFmpeg's
   # (headers only; the game's platform layer links them), and the stb headers' first lines, which carry their versions.
   target_include_directories(tpw_launcher_ui PRIVATE $<TARGET_PROPERTY:tpw_libjpeg,INTERFACE_INCLUDE_DIRECTORIES>)

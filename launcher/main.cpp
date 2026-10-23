@@ -15,10 +15,10 @@
 #include <string>
 #include <unordered_map>
 #include <algorithm>
-#include <cmath>
 #include <vector>
 
 #include <dlfcn.h>
+// The _WIN32 parts of this file: Windows port contributed by samueleagle91 (tpw-port PR #1).
 #ifndef _WIN32
 #include <execinfo.h>
 #include <sys/ucontext.h>
@@ -34,6 +34,12 @@
 #include "Arrival.h"
 #include "ResolutionBalance.h"
 #include "UI_Base.h"
+#include "lobby.h"
+#include "TPSettings.h"
+#include "TPAdvisor.h"
+#include "TrueTypeRender.h"
+#include "analyser.h"
+#include "rsse.h"
 #include "platform.h"
 #include "handoff.h"
 #ifdef _WIN32
@@ -43,6 +49,7 @@
 #include "startup.h"
 #include "static_init.h"
 #include "stubs.h"
+#include "ui_main.h"
 #include "ui/backend.h"
 #include "ui/theme.h"
 #include "ui/window.h"
@@ -51,15 +58,14 @@ namespace {
 // The largest preset, 4096 x 3072 (3840 x 2160 at 16:9), rendered offscreen and scaled to the window (the maintainer,
 // 2026-10-20; it was Resolution.sam's 2048 x 1536 preset, 7, from 2026-10-11). Presets 8 to 10 are the port's own.
 constexpr int32_t kDefaultResolution = 10;
-// The screen's shape: the nearest of 4:3, 16:10 and 16:9 to the screen's own unless --aspect asks otherwise
-// (ScreenAspect), and 16:9 when the screen cannot be asked (the maintainer chose 16:9, 2026-10-20; a fixed shape left
-// bars on other screens). Presets 1 to 7 keep their
+// The screen's shape: 16:9 unless --aspect asks otherwise (the maintainer, 2026-10-20). Presets 1 to 7 keep their
 // height and take the width the shape gives them, so 2048 x 1536 becomes 2730 x 1536; presets 8 to 10 keep the width of
 // their 16:9 size (2560, 3200, 3840) and take the height. 4:3 is the original game's layout exactly.
 constexpr int kDefaultAspectWide = 16;
 constexpr int kDefaultAspectHigh = 9;
 bool gAbortOnStub = false;
 bool gBackToLauncher = false;   // the launcher's "Back to the launcher after playing", for a game started from its window
+bool gReopenLauncher = false;   // a game started from the window has quit with gBackToLauncher set (main, after its exit line)
 bool gTraceStubs = false;
 long gStubCalls = 0;
 const char* volatile gLastStub = nullptr;
@@ -88,29 +94,6 @@ int ResolutionPreset(const char* size) {
     for (int i = 0; i < 10; ++i)
         if (std::strcmp(size, sizes[i]) == 0) return i + 1;
     return 0;
-}
-
-// The shape of the screen the game opens on (its desktop mode: --display's screen, else the main one), as the nearest of
-// the three the UI was laid out for: 4:3, 16:10 and 16:9 (a MacBook's 2056 x 1329 is 16:10, a 21:9 screen 16:9, a 5:4
-// or upright one 4:3). False when there is no screen to ask. Video is started for it and stays started (the window and
-// the game use it).
-bool ScreenAspect(int& wide, int& high) {
-    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) return false;
-    SDL_DisplayID display = tpw::ChosenDisplay();
-    if (display == 0) display = SDL_GetPrimaryDisplay();
-    const SDL_DisplayMode* mode = display != 0 ? SDL_GetDesktopDisplayMode(display) : nullptr;
-    if (mode == nullptr || mode->w <= 0 || mode->h <= 0) return false;
-    static const int kShapes[3][2] = {{4, 3}, {16, 10}, {16, 9}};
-    const float shape = static_cast<float>(mode->w) / static_cast<float>(mode->h);
-    int nearest = 0;
-    for (int i = 1; i < 3; ++i) {
-        const float distance = std::fabs(shape - static_cast<float>(kShapes[i][0]) / static_cast<float>(kShapes[i][1]));
-        const float best = std::fabs(shape - static_cast<float>(kShapes[nearest][0]) / static_cast<float>(kShapes[nearest][1]));
-        if (distance < best) nearest = i;
-    }
-    wide = kShapes[nearest][0];
-    high = kShapes[nearest][1];
-    return true;
 }
 
 // W:H with both whole and positive, no narrower than 4:3; 0 for anything else.
@@ -155,29 +138,61 @@ int RunGame(int32_t resolution) {
     return 0;
 }
 
+// The log file's "exit:" line is written (main's return, a crash; startup.cpp's Pump says its own).
+volatile sig_atomic_t gExitLogged = 0;
+
+void LogExit(int code) {
+    if (gExitLogged) return;
+    gExitLogged = 1;
+    tpw::LogFileF("exit: code %d", code);
+}
+
+// exit() from somewhere other than main's return (atexit): its code is not known here.
+void LogExitAtExit() {
+    if (gExitLogged) return;
+    gExitLogged = 1;
+    tpw::LogToFile("", "exit: through exit() (its code is not known here)");
+}
+
+// A crash report's text to stderr and to the log file (write(2) only: this runs in a signal handler).
+void CrashWrite(const char* text, int length) {
+    if (length <= 0) return;
+    (void)!write(2, text, static_cast<size_t>(length));
+    const int fd = tpw::LogFileDescriptor();
+    if (fd >= 0) (void)!write(fd, text, static_cast<size_t>(length));
+}
+
 // A crash right after a stand-in returned is usually caused by it (a zero where the caller
 // expected an object, or a structure result left unwritten): name the last one reached.
 void OnCrash(int signal) {
     static char text[512];
-    const int length = std::snprintf(text, sizeof text, "launcher: crashed (signal %d); the last stand-in reached was: %s\n",
-                                     signal, gLastStub != nullptr ? gLastStub : "(none)");
-    if (length > 0) (void)!write(2, text, static_cast<size_t>(length));
-    if (const char* running = RunningStaticInitialiser()) {
-        const int more = std::snprintf(text, sizeof text, "launcher: inside the static initialiser %s\n", running);
-        if (more > 0) (void)!write(2, text, static_cast<size_t>(more));
-    }
+    CrashWrite(text, std::snprintf(text, sizeof text, "launcher: crashed (signal %d); the last stand-in reached was: %s\n",
+                                   signal, gLastStub != nullptr ? gLastStub : "(none)"));
+    if (const char* running = RunningStaticInitialiser())
+        CrashWrite(text, std::snprintf(text, sizeof text, "launcher: inside the static initialiser %s\n", running));
 #ifdef _WIN32
     // Where it happened: the exception and the stack that host_win.cpp kept, as module offsets.
     if (const char* fatal = tpw::win32::LastFatalException()) {
-        (void)!write(2, "launcher: ", 10);
-        (void)!write(2, fatal, static_cast<unsigned>(std::strlen(fatal)));
-        (void)!write(2, "\n", 1);
+        CrashWrite("launcher: ", 10);
+        CrashWrite(fatal, static_cast<int>(std::strlen(fatal)));
+        CrashWrite("\n", 1);
     }
+    const int fd = tpw::LogFileDescriptor();
+    if (fd >= 0) {
 #else
-    // Where it happened (the launcher keeps its symbols).
+    // Where it happened (the launcher keeps its symbols); in the log file too.
     static void* frames[48];
-    backtrace_symbols_fd(frames, backtrace(frames, 48), 2);
+    const int depth = backtrace(frames, 48);
+    backtrace_symbols_fd(frames, depth, 2);
+    const int fd = tpw::LogFileDescriptor();
+    if (fd >= 0) {
+        backtrace_symbols_fd(frames, depth, fd);
 #endif
+        gExitLogged = 1;
+        const int length = signal == SIGABRT ? std::snprintf(text, sizeof text, "exit: abort\n")
+                                             : std::snprintf(text, sizeof text, "exit: crashed (signal %d)\n", signal);
+        if (length > 0) (void)!write(fd, text, static_cast<size_t>(length));
+    }
     std::signal(signal, SIG_DFL);
     std::raise(signal);
 }
@@ -198,7 +213,7 @@ void OnCrashInfo(int signal, siginfo_t* info, void* context) {
     const int length = std::snprintf(text, sizeof text, "launcher: fault at address %p, instruction %p (%s + %ld)\n", info->si_addr,
                                      reinterpret_cast<void*>(pc), named ? where.dli_sname : "?",
                                      named ? static_cast<long>(pc - reinterpret_cast<uintptr_t>(where.dli_saddr)) : 0L);
-    if (length > 0) (void)!write(2, text, static_cast<size_t>(length));
+    CrashWrite(text, length);
     OnCrash(signal);
 }
 #endif
@@ -232,8 +247,7 @@ void Usage(const char* program) {
                  "                    640x480, 800x600, 1024x768, 1280x1024, 1600x1200, 2048x1536) or a larger one of the\n"
                  "                    port's (2560x1920, 3200x2400, 4096x3072; default: 4096x3072). The game renders at it\n"
                  "                    offscreen and the window shows it scaled\n"
-                 "  --aspect W:H   the screen's shape (default: the nearest of 4:3, 16:10 and 16:9 to the screen's own).\n"
-                 "                 The Resolution.sam presets keep their height and are\n"
+                 "  --aspect W:H   the screen's shape (default 16:9). The Resolution.sam presets keep their height and are\n"
                  "                 widened (2048x1536 becomes 2730x1536 at 16:9, 2458x1536 at 16:10); the larger ones keep\n"
                  "                 the width of their 16:9 size (2560x1440, 3200x1800, 3840x2160 at 16:9; 3840x2400 at\n"
                  "                 16:10). The park is seen further to the sides, the panels keep to the screen's edges\n"
@@ -245,6 +259,11 @@ void Usage(const char* program) {
                  "                 (repeatable; the pointer stays there until the real mouse moves)\n"
                  "  --drag X0,Y0-X1,Y1@N[/K]  a scripted left drag: the pointer to (X0, Y0) on pass N, the button down on\n"
                  "                 pass N+2, K steps (default 8) to (X1, Y1), the button up on pass N+K+4 (repeatable)\n"
+                 "  --move X,Y@N   a scripted pointer move to game pixel (X, Y) on pass N, no button (repeatable)\n"
+                 "  --rclick X,Y@N  a scripted right click, as --click (repeatable)\n"
+                 "  --key NAME@N   a scripted key: down on pass N, up on pass N+1 (esc, return, space, tab, cmd, ctrl, shift,\n"
+                 "                 option or an SDL key name; repeatable)\n"
+                 "  --hold NAME@N-M  a scripted key held from pass N to pass M (its modifier counts for the clicks between)\n"
                  "  --type TEXT@N  scripted typing: one character every two passes from pass N (letters, digits, space;\n"
                  "                 \\r for return)\n"
                  "  --no-movies    skip the logo and intro films\n"
@@ -263,8 +282,77 @@ void Usage(const char* program) {
                  "  --dump-every N     with --dump-frames: save only every Nth of those frames\n"
 
                  "  --stub-abort   abort at the first unimplemented function (for a debugger)\n"
-                 "  --stub-trace   log every call of an unimplemented function, not only the first\n",
-                 program);
+                 "  --stub-trace   log every call of an unimplemented function, not only the first\n"
+                 "  --version      print the launcher's version and build, and exit\n"
+                 "Every run's log is also written to logs/launcher-YYYYMMDD-HHMMSS.log in the data folder (the %zu most\n"
+                 "recent runs are kept), with the launcher's version, the system and the hardware at its top: a bug report\n"
+                 "attaches the newest one\n",
+                 program, tpw::kLogFilesKept);
+}
+
+// The options that take a value (main's loop), so the early look below skips their values.
+bool TakesValue(const std::string& arg) {
+    static const char* const kWithValue[] = {"--game",  "--data",        "--play",       "--program",    "--window-click",
+                                             "--user",  "--edition",     "--resolution", "--aspect",     "--frames",
+                                             "--click", "--drag",        "--type",       "--dump-frames", "--dump-every",
+                                             "--dump-limit", "--display"};
+    for (const char* option : kWithValue)
+        if (arg == option) return true;
+    return false;
+}
+
+// --version and --help answer before the log file is opened (no file for them): the exit code, or -1 to run. `dataDir`
+// gets --data's value, where the log file goes.
+int EarlyOptions(int argc, char** argv, std::string& dataDir) {
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--version") {
+            std::printf("%s %s\nbuild: %s\n", tpw::ui::kProductName, tpw::ui::kLauncherVersion, TPW_LAUNCHER_BUILD);
+            return 0;
+        }
+        if (arg == "--help" || arg == "-h") {
+            Usage(argv[0]);
+            return 0;
+        }
+        if (TakesValue(arg) && i + 1 < argc) {
+            if (arg == "--data") dataDir = argv[i + 1];
+            ++i;
+        }
+    }
+    return -1;
+}
+
+// Opens the run's log file (platform/log_file.h) in the data folder's logs/: --data's folder, else the per-user one
+// (SDL's pref path, as ChooseFromDataFolder finds it); when that cannot be made, in the temporary folder. stderr's first
+// line names it.
+void OpenLog(int argc, char** argv, const std::string& dataDir) {
+    const std::string firstLine = std::string(tpw::ui::kProductName) + " " + tpw::ui::kLauncherVersion + " (build: " +
+                                  TPW_LAUNCHER_BUILD + ")";
+    std::filesystem::path folder;
+    std::string why;
+    if (!dataDir.empty()) {
+        folder = std::filesystem::path(dataDir) / "logs";
+    } else if (char* pref = SDL_GetPrefPath("", tpw::ui::kDataFolderName)) {
+        folder = std::filesystem::path(pref) / "logs";
+        SDL_free(pref);
+    } else {
+        why = std::string("no per-user folder: ") + SDL_GetError();
+    }
+    if (!folder.empty() && tpw::OpenLogFile(folder, firstLine, argc, argv, why)) {
+        std::fprintf(stderr, "log: %s\n", tpw::LogFilePath().c_str());
+        return;
+    }
+    std::error_code ec;
+    const std::filesystem::path temp = std::filesystem::temp_directory_path(ec) / tpw::ui::kDataFolderName / "logs";
+    std::string tempWhy;
+    if (!ec && tpw::OpenLogFile(temp, firstLine, argc, argv, tempWhy)) {
+        std::fprintf(stderr, "log: %s\n", tpw::LogFilePath().c_str());
+        tpw::LogRawF("launcher: the log file is in the temporary folder: the data folder's logs/ cannot be used (%s)",
+                     why.c_str());
+        return;
+    }
+    tpw::LogRawF("launcher: no log file this run (%s; %s)\n", why.c_str(),
+                 ec ? ec.message().c_str() : tempWhy.c_str());
 }
 
 // ---- the launcher's window and its data folder (launcher-design section 4: assets/{us,eur,gold}, saves/{us,eur},
@@ -357,7 +445,7 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     if (prefPath.empty()) {
         char* pref = SDL_GetPrefPath("", tpw::ui::kDataFolderName);
         if (pref == nullptr) {
-            std::fprintf(stderr, "launcher: no per-user folder for the launcher's data: %s\n", SDL_GetError());
+            tpw::LogRawF("launcher: no per-user folder for the launcher's data: %s\n", SDL_GetError());
             return 1;
         }
         prefPath = pref;
@@ -367,7 +455,7 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     std::string err;
     const auto openStart = std::chrono::steady_clock::now();
     if (!backend.Open(err)) {
-        std::fprintf(stderr, "launcher: the data folder (launcher.ini in \"%s\") cannot be used: %s\n", prefPath.c_str(),
+        tpw::LogRawF("launcher: the data folder (launcher.ini in \"%s\") cannot be used: %s\n", prefPath.c_str(),
                      err.c_str());
         return 1;
     }
@@ -390,7 +478,7 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
         choice.skipIntro = backend.Setting(tpw::ui::kSkipIntroKey) == "1";
         const tpw::assets::EditionStatus status = backend.Status(choice.edition);
         if (!status.unlocked) {
-            std::fprintf(stderr,
+            tpw::LogRawF(
                          "launcher: --play %s: %zu of %zu required files of that edition are in \"%s\"\n%s"
                          "launcher: open the launcher without --game and --play, and drop your discs on its window\n",
                          play.c_str(), status.requiredPresent, status.required, backend.DataFolder().c_str(),
@@ -411,18 +499,25 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
         placement.dumpEvery = config.dumpEvery;
         placement.dumpLimit = config.dumpLimit;
         placement.clicks = tpw::launcher::gWindowClicks;   // --window-click
+        // The window's report lines and its screens go to the log file too; its About box shows the logs folder.
+        placement.log = [](const char* line) { tpw::LogRaw(line); };
+        placement.videoStarted = [] { tpw::LogDisplayOnce(); };
+        if (!tpw::LogFilePath().empty()) placement.logsFolder = std::filesystem::path(tpw::LogFilePath()).parent_path().string();
         if (!config.display.empty()) {
             if (config.background) {   // before SDL's video starts, as the game's window sets them
                 SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
                 SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_RAISED, "0");
             }
             // Video stays started (the window and then the game use it; display numbers hold while it runs).
-            if (SDL_InitSubSystem(SDL_INIT_VIDEO)) placement.display = tpw::ChosenDisplay();
+            if (SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+                tpw::LogDisplayOnce();
+                placement.display = tpw::ChosenDisplay();
+            }
         }
         switch (tpw::launcher::OpenLauncherWindow(backend, choice, err, placement)) {
             case tpw::ui::WindowOutcome::Quit: return 0;
             case tpw::ui::WindowOutcome::Failed:
-                std::fprintf(stderr, "launcher: the launcher's window failed: %s\n", err.c_str());
+                tpw::LogRawF("launcher: the launcher's window failed: %s\n", err.c_str());
                 return 1;
             case tpw::ui::WindowOutcome::Play: break;
         }
@@ -430,10 +525,9 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     // The launcher's settings are written to launcher.ini again here, after the importer's last write of the file (the
     // choice it saved on Play), which kept the importer's older copy of the keys. "Skip the intro films" is as
     // --no-movies; "Back to the launcher after playing" opens the launcher again when a game started from its window
-    // quits (ReopenLauncher).
+    // quits (ReopenLauncher). From tpw-port PRs #10, #22 and #23 by samueleagle91.
     for (const char* key : {tpw::ui::kSkipIntroKey, tpw::ui::kBackToLauncherKey, tpw::ui::kVisitorArrivalsKey,
-                            tpw::ui::kVisitorLimitKey, tpw::ui::kSmoothZoomKey,
-                            tpw::ui::kInterfaceSizeKey}) {
+                            tpw::ui::kVisitorLimitKey}) {
         const std::string value = backend.Setting(key);
         std::string ignored;
         if (!value.empty()) tpw::ui::ImporterBackend::SaveIniExtra(prefPath, key, value, ignored);
@@ -442,20 +536,12 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
 #ifdef TPW_PORT_FIX
     {   // the Park rules box (CArrival::HowManyPeople)
         const std::string arrivals = backend.Setting(tpw::ui::kVisitorArrivalsKey);
-        gArrivalScale = arrivals == "more" ? 1.5f : arrivals == "many" ? 2.0f : 1.0f;
+        gPortArrivalScale = arrivals == "more" ? 1.5f : arrivals == "many" ? 2.0f : 1.0f;
         const std::string limit = backend.Setting(tpw::ui::kVisitorLimitKey);
-        gVisitorLimit = limit == "3000" ? 3000 : limit == "5000" ? 5000 : 1500;
-        if (gArrivalScale != 1.0f || gVisitorLimit != 1500)
-            tpw::Log("park rules: visitors arriving x%.1f, visitor limit %d", static_cast<double>(gArrivalScale),
-                     static_cast<int>(gVisitorLimit));
-    }
-    // The Settings box's "Smooth wheel zoom" (Will_HandleCameraMessages); off, the original's step, by default.
-    gUISmoothWheelZoom = backend.Setting(tpw::ui::kSmoothZoomKey) == "1" ? 1 : 0;
-    if (gUISmoothWheelZoom != 0) tpw::Log("smooth wheel zoom (the launcher's Settings)");
-    {   // the Settings box's interface size (UI_SetRealScreenRez)
-        const std::string size = backend.Setting(tpw::ui::kInterfaceSizeKey);
-        gUIScale = size == "85" ? 0.85f : size == "70" ? 0.7f : 1.0f;
-        if (gUIScale != 1.0f) tpw::Log("interface size: %s%%", size.c_str());
+        gPortVisitorLimit = limit == "3000" ? 3000 : limit == "5000" ? 5000 : 1500;
+        if (gPortArrivalScale != 1.0f || gPortVisitorLimit != 1500)
+            tpw::Log("park rules: visitors arriving x%.1f, visitor limit %d", static_cast<double>(gPortArrivalScale),
+                     static_cast<int>(gPortVisitorLimit));
     }
 #endif
     if (choice.skipIntro) {
@@ -477,12 +563,16 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     }
     if (program.empty()) program = backend.ProgramPath();
     tpw::Log("data folder: %s", backend.DataFolder().c_str());
+    tpw::LogFileF("play: %s (%s), from %s; game folder %s", us ? "Sim Theme Park, the US edition" : "Theme Park World, the European edition",
+                  tpw::assets::EditionName(choice.edition), play.empty() ? "the launcher window's Play" : "--play",
+                  config.gameDir.string().c_str());
     if (choice.gold) tpw::Log("Gold rides: switched on, but this build does not add them to the game yet");
     return -1;
 }
 
 // "Back to the launcher after playing": the launcher starts again, with this run's arguments (which opened its window),
-// as a process of its own, since the game's state lasts for the whole process and cannot be started twice in one.
+// as a process of its own, since the game's state lasts for the whole process and cannot be started twice in one. It runs
+// from main, after the log file's "exit:" line has the game's code. From tpw-port PR #22 by samueleagle91.
 void ReopenLauncher(int argc, char** argv) {
     std::vector<const char*> args(argv, argv + argc);
     args.push_back(nullptr);
@@ -502,12 +592,12 @@ void ReopenLauncher(int argc, char** argv) {
 void Report() {
     std::vector<const char*> names(static_cast<size_t>(tpw_stub_count()) + 1);
     const int hit = tpw_stub_hits(names.data(), static_cast<int>(names.size()));
-    std::fprintf(stderr, "launcher: %d of %d stand-ins were reached (%ld calls in all)\n", hit, tpw_stub_count(),
+    tpw::LogRawF("launcher: %d of %d stand-ins were reached (%ld calls in all)\n", hit, tpw_stub_count(),
                  gStubCalls);
     std::vector<std::pair<long, const char*>> byCalls;
     for (const auto& entry : gStubCallsByName) byCalls.emplace_back(entry.second, entry.first);
     std::sort(byCalls.begin(), byCalls.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
-    for (const auto& entry : byCalls) std::fprintf(stderr, "launcher: %10ld calls  %s\n", entry.first, entry.second);
+    for (const auto& entry : byCalls) tpw::LogRawF("launcher: %10ld calls  %s\n", entry.first, entry.second);
 }
 }  // namespace
 
@@ -520,7 +610,8 @@ void tpw_stub_called(const char* name, bool platform, bool first) {
     if (gAbortOnStub) std::abort();
 }
 
-int main(int argc, char** argv) {
+namespace {
+int LauncherMain(int argc, char** argv) {
     // a trap (a hardened library check), an illegal instruction and an abort (a failed stack check is a silent one) get
     // the backtrace too
 #ifdef _WIN32
@@ -553,7 +644,6 @@ int main(int argc, char** argv) {
     int32_t resolution = kDefaultResolution;
     int aspectWide = kDefaultAspectWide;
     int aspectHigh = kDefaultAspectHigh;
-    bool aspectGiven = false;   // --aspect; without it the screen's own shape (ScreenAspect)
     if (const char* dir = std::getenv("TPW_GAME_DIR")) config.gameDir = dir;
     std::filesystem::path program;   // the application the data tables are read from (platform/game_tables.cpp)
     std::string dataDir, play;       // --data, --play: the launcher's data folder (no --game)
@@ -563,6 +653,7 @@ int main(int argc, char** argv) {
         auto value = [&]() -> const char* {
             if (i + 1 >= argc) {
                 Usage(argv[0]);
+                LogExit(2);
                 std::exit(2);
             }
             return argv[++i];
@@ -572,7 +663,7 @@ int main(int argc, char** argv) {
         else if (arg == "--play") {
             play = value();
             if (play != "us" && play != "eur") {
-                std::fprintf(stderr, "launcher: --play wants us or eur: %s\n", play.c_str());
+                tpw::LogRawF("launcher: --play wants us or eur: %s\n", play.c_str());
                 return 2;
             }
         }
@@ -582,7 +673,7 @@ int main(int argc, char** argv) {
             const char* spec = value();
             tpw::ui::WindowPlacement::Click click{};
             if (std::sscanf(spec, "%f,%f@%d", &click.x, &click.y, &click.frame) != 3 || click.frame < 1) {
-                std::fprintf(stderr, "launcher: --window-click wants X,Y@F (window point and drawn frame from 1): %s\n",
+                tpw::LogRawF("launcher: --window-click wants X,Y@F (window point and drawn frame from 1): %s\n",
                              spec);
                 return 2;
             }
@@ -592,7 +683,7 @@ int main(int argc, char** argv) {
         else if (arg == "--edition") {
             config.edition = value();
             if (config.edition != "stp" && config.edition != "tpw") {
-                std::fprintf(stderr, "launcher: --edition wants stp or tpw: %s\n", config.edition.c_str());
+                tpw::LogRawF("launcher: --edition wants stp or tpw: %s\n", config.edition.c_str());
                 return 2;
             }
         }
@@ -603,7 +694,7 @@ int main(int argc, char** argv) {
             const char* size = value();
             resolution = ResolutionPreset(size);
             if (resolution == 0) {
-                std::fprintf(stderr, "launcher: unsupported resolution: %s\n", size);
+                tpw::LogRawF("launcher: unsupported resolution: %s\n", size);
                 Usage(argv[0]);
                 return 2;
             }
@@ -612,10 +703,9 @@ int main(int argc, char** argv) {
         else if (arg == "--aspect") {
             const char* shape = value();
             if (ParseAspect(shape) == 0.0f || std::sscanf(shape, "%d:%d", &aspectWide, &aspectHigh) != 2) {
-                std::fprintf(stderr, "launcher: --aspect wants W:H, no narrower than 4:3 (16:9, 16:10, 4:3): %s\n", shape);
+                tpw::LogRawF("launcher: --aspect wants W:H, no narrower than 4:3 (16:9, 16:10, 4:3): %s\n", shape);
                 return 2;
             }
-            aspectGiven = true;
         }
         else if (arg == "--no-intro") config.debugOptions[3] = 0;
         else if (arg == "--frames") config.maxFrames = std::atoi(value());
@@ -623,10 +713,36 @@ int main(int argc, char** argv) {
             const char* spec = value();
             tpw::Config::ScriptedClick click{};
             if (std::sscanf(spec, "%d,%d@%d", &click.x, &click.y, &click.pass) != 3 || click.pass < 1) {
-                std::fprintf(stderr, "launcher: --click wants X,Y@N (game pixel and pass number from 1): %s\n", spec);
+                tpw::LogRawF("launcher: --click wants X,Y@N (game pixel and pass number from 1): %s\n", spec);
                 return 2;
             }
             config.clicks.push_back(click);
+        }
+        else if (arg == "--move" || arg == "--rclick") {
+            const char* spec = value();
+            int32_t x = 0, y = 0, pass = 0;
+            if (std::sscanf(spec, "%d,%d@%d", &x, &y, &pass) != 3 || pass < 1) {
+                std::fprintf(stderr, "launcher: %s wants X,Y@N (game pixel and pass number from 1): %s\n", arg.c_str(), spec);
+                return 2;
+            }
+            if (arg == "--move") config.moves.push_back({pass, x, y});
+            else config.rightClicks.push_back({pass, x, y});
+        }
+        else if (arg == "--key" || arg == "--hold") {
+            const std::string spec = value();
+            const size_t at = spec.rfind('@');
+            tpw::Config::ScriptedKey key{};
+            int32_t down = 0, up = 0;
+            const int read = at == std::string::npos ? 0 : std::sscanf(spec.c_str() + at + 1, "%d-%d", &down, &up);
+            key.scancode = at == std::string::npos ? 0 : tpw::ScancodeFromKeyName(spec.substr(0, at).c_str());
+            key.down = down;
+            key.up = arg == "--key" ? down + 1 : up;
+            if (key.scancode == 0 || down < 1 || (arg == "--key" ? read != 1 : read != 2 || up <= down)) {
+                std::fprintf(stderr, "launcher: %s wants NAME@N%s (esc, return, space, tab, cmd, ctrl, shift, option or an SDL key name): %s\n",
+                             arg.c_str(), arg == "--key" ? "" : "-M", spec.c_str());
+                return 2;
+            }
+            config.keys.push_back(key);
         }
         else if (arg == "--drag") {
             const char* spec = value();
@@ -634,7 +750,7 @@ int main(int argc, char** argv) {
             drag.steps = 8;
             const int read = std::sscanf(spec, "%d,%d-%d,%d@%d/%d", &drag.x0, &drag.y0, &drag.x1, &drag.y1, &drag.pass, &drag.steps);
             if (read < 5 || drag.pass < 1 || drag.steps < 1) {
-                std::fprintf(stderr, "launcher: --drag wants X0,Y0-X1,Y1@N or X0,Y0-X1,Y1@N/STEPS: %s\n", spec);
+                tpw::LogRawF("launcher: --drag wants X0,Y0-X1,Y1@N or X0,Y0-X1,Y1@N/STEPS: %s\n", spec);
                 return 2;
             }
             config.drags.push_back(drag);
@@ -644,7 +760,7 @@ int main(int argc, char** argv) {
             const size_t at = spec.rfind('@');
             tpw::Config::ScriptedTyping typing{};
             if (at == std::string::npos || (typing.pass = std::atoi(spec.c_str() + at + 1)) < 1) {
-                std::fprintf(stderr, "launcher: --type wants TEXT@N (the text and the pass number from 1): %s\n", spec.c_str());
+                tpw::LogRawF("launcher: --type wants TEXT@N (the text and the pass number from 1): %s\n", spec.c_str());
                 return 2;
             }
             const std::string raw = spec.substr(0, at);
@@ -684,12 +800,12 @@ int main(int argc, char** argv) {
             return exitCode;
         }
     } else if (!dataDir.empty() || !play.empty()) {
-        std::fprintf(stderr, "launcher: --data and --play start from the launcher's data folder; --game names the game itself\n");
+        tpw::LogRawF("launcher: --data and --play start from the launcher's data folder; --game names the game itself\n");
         return 2;
     }
     std::error_code ec;
     if (!std::filesystem::is_directory(config.gameDir / "data", ec)) {
-        std::fprintf(stderr, "launcher: no game found in \"%s\" (it must hold the game's \"data\" folder)\n",
+        tpw::LogRawF("launcher: no game found in \"%s\" (it must hold the game's \"data\" folder)\n",
                      config.gameDir.string().c_str());
         return 1;
     }
@@ -713,7 +829,7 @@ int main(int argc, char** argv) {
     if (program.empty()) program = config.gameDir / "SimTheme Park";
     std::string why;
     if (!tpw::launcher::LoadTables(program, &why)) {
-        std::fprintf(stderr,
+        tpw::LogRawF(
                      "launcher: the game's data tables could not be read from \"%s\": %s\n"
                      "launcher: --program (or TPW_GAME_PROGRAM) names a full Mac \"SimTheme Park\" application, such as the\n"
                      "launcher: US Mac CD's own, as devtools/import_originals.py writes it into the game folder\n",
@@ -724,18 +840,31 @@ int main(int argc, char** argv) {
 
     // 4:3 leaves the game's own sizes alone (the 1280 x 1024 preset stays 5:4); anything wider widens the screen.
 #ifdef TPW_PORT_FIX
-    if (!aspectGiven && !ScreenAspect(aspectWide, aspectHigh)) {
-        aspectWide = kDefaultAspectWide;
-        aspectHigh = kDefaultAspectHigh;
-    }
     gUIWideAspect = aspectWide * 3 == aspectHigh * 4 ? 0.0f : static_cast<float>(aspectWide) / static_cast<float>(aspectHigh);
     tpw::Log("aspect: %d:%d%s", aspectWide, aspectHigh, gUIWideAspect == 0.0f ? " (the original 4:3 layout)" : "");
     gUIHighPresets = 1;
+    // The online world's servers shut down: its globe button stays on the islands (include/lobby.h).
+    gPortOnlineWorldGone = true;
+    // The park map's destroy callback at the quit asks the advisor of a world already deleted (include/ui_main.h).
+    gPortNoWorldAdvisorGuard = true;
+    // The fixes of samueleagle91 (tpw-port PRs #2, #5, #7, #12 and #13): the advisor's aspect (TPAdvisor.h), the Options
+    // panel as a 4:3 panel (UI_Base.h), the signs' text (TrueTypeRender.h) and the spawns from the script code (analyser.h).
+    gPortAdvisorAspect = true;
+    gPortWidePanel = true;
+    gPortSignText = true;
+    gPortScriptCode = true;
+    // The ride context read as the tag_sMesh it is (rsse.h; samueleagle91, tpw-port PR #25).
+    gPortRideCtx = true;
     // The preset is the size the game renders at, not the window's; a machine whose framebuffers are smaller gets the
     // largest preset that fits. TPW_LARGEST_GAME_SIZE stands in for the machine's limit, to check the fallback.
     if (resolution > 0) {
         const char* forced = std::getenv("TPW_LARGEST_GAME_SIZE");
         resolution = FittingPreset(resolution, forced != nullptr ? std::atoi(forced) : tpw::LargestGameSize());
+        // The launcher owns the size (the Resolution.sam value ResolutionOverrideWorld sets): the options panel shows
+        // the size the game runs at and offers no other (include/TPSettings.h); Config.tcf's resolution is ignored.
+        gPortScreenWidth = &gScreenWidth;
+        gPortScreenHeight = &gScreenHeight;
+        tpw::Log("video: the launcher sets the resolution; Config.tcf's resolution is ignored");
     }
 #else
     tpw::Log("aspect: 4:3 (a build without the port's fixes has the original layout only)");
@@ -745,9 +874,38 @@ int main(int argc, char** argv) {
     }
 #endif
 
+    // The size the game renders at, for the log file (the preset's size at the aspect above).
+#ifdef TPW_PORT_FIX
+    {
+        int32_t gameWide = 0;
+        int32_t gameHigh = 0;
+        if (resolution > 0) UI_PresetSize(resolution, gUIWideAspect, gameWide, gameHigh);
+        tpw::LogFileF("game size: %dx%d (preset %d), aspect %d:%d, %s, %s", gameWide, gameHigh, resolution, aspectWide,
+                      aspectHigh, config.debugOptions[1] != 0 && !config.background ? "full screen" : "in a window",
+                      config.fit ? "scaled to the window" : "drawn into the window directly");
+    }
+#else
+    tpw::LogFileF("game size: preset %d, aspect 4:3", resolution);
+#endif
+
     const int result = RunGame(resolution);
     Report();
-    if (gBackToLauncher) ReopenLauncher(argc, argv);
+    gReopenLauncher = gBackToLauncher;
     SDL_Quit();
     return result;
+}
+}  // namespace
+
+int main(int argc, char** argv) {
+    // --version and --help need no log file; every other run opens one before anything logs, and ends it with how the
+    // run ended (exit: code N here; a crash or an abort writes its own from the signal handler).
+    std::string dataDir;
+    const int early = EarlyOptions(argc, argv, dataDir);
+    if (early >= 0) return early;
+    OpenLog(argc, argv, dataDir);
+    std::atexit(LogExitAtExit);
+    const int code = LauncherMain(argc, argv);
+    LogExit(code);
+    if (gReopenLauncher) ReopenLauncher(argc, argv);
+    return code;
 }

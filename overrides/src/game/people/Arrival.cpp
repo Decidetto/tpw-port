@@ -56,14 +56,6 @@ constexpr int kTimeBetweenArrivalsSlot = 179;  // +0x2d4
 constexpr int kNewParkBonusSlot = 181;         // +0x2dc
 constexpr int kPointsPerVisitorSlot = 182;     // +0x2e0
 
-}  // namespace
-
-// TPW_PORT_FIX parkrules gArrivalScale, gVisitorLimit | Mac: (none: the bus's people and the 1500 limit are fixed) | Port: the launcher's Park rules, the Mac's values until it sets them | Why: the player chooses busier parks in the launcher's Park rules
-float gArrivalScale = 1.0f;
-int32_t gVisitorLimit = 0x5dc;
-
-namespace {
-
 // The arrivals' time stamp (this + 4) is a CTimeSig.
 CTimeSig* TimeSigOf(CArrival* arrival) { return reinterpret_cast<CTimeSig*>(&arrival->mF04); }
 
@@ -171,17 +163,17 @@ int32_t CArrival::HowManyPeople() {
     const int32_t sum = static_cast<int32_t>(static_cast<uint32_t>(points) + static_cast<uint32_t>(Slot(kNewParkBonusSlot)));
     const float scaled = factor * static_cast<float>(sum);
     int32_t people = TruncateToInt(scaled) / divisor;
-    // TPW_PORT_FIX parkrules CArrival::HowManyPeople | Mac: the bus brings the points' share | Port: times gArrivalScale (the launcher's "Visitors arriving") | Why: the player chooses busier parks in the launcher's Park rules
-    people = TruncateToInt(static_cast<float>(people) * gArrivalScale);
+    // TPW_PORT_FIX parkrules CArrival::HowManyPeople | Mac: the bus brings the park's attraction points over PointsPerVisitor, and an offline park holds at most 1500 visitors | Port: that many times gPortArrivalScale (include/Arrival.h), and at most gPortVisitorLimit (online parks keep 500); at 1 the count is not touched | Why: the player chooses busier parks in the launcher's Park rules; contributed by samueleagle91 (tpw-port PR #23)
+    if (gPortArrivalScale != 1.0f) people = TruncateToInt(static_cast<float>(people) * gPortArrivalScale);
     if (Slot(kMinPeopleSlot) > people) people = Slot(kMinPeopleSlot);
     if (TheGameType().mType == 1 && static_cast<uint32_t>(visitors + people) > 0x1f4) {
         CTRACE(2, kTraceCapOnline);
         people = 0x1f4 - visitors;
     }
-    // TPW_PORT_FIX parkrules CArrival::HowManyPeople | Mac: an offline park holds at most 1500 visitors | Port: gVisitorLimit (the launcher's "Visitor limit") | Why: the player chooses busier parks in the launcher's Park rules
-    if (TheGameType().mType != 1 && static_cast<uint32_t>(visitors + people) > static_cast<uint32_t>(gVisitorLimit)) {
+    // TPW_PORT_FIX parkrules CArrival::HowManyPeople | Mac: the bus brings the park's attraction points over PointsPerVisitor, and an offline park holds at most 1500 visitors | Port: that many times gPortArrivalScale (include/Arrival.h), and at most gPortVisitorLimit (online parks keep 500); at 1500 the test is the Mac's | Why: the player chooses busier parks in the launcher's Park rules; contributed by samueleagle91 (tpw-port PR #23)
+    if (TheGameType().mType != 1 && static_cast<uint32_t>(visitors + people) > static_cast<uint32_t>(gPortVisitorLimit)) {
         CTRACE(2, kTraceCapOffline);
-        people = gVisitorLimit - visitors;
+        people = gPortVisitorLimit - visitors;
     }
     CTRACE(3, kTracePeopleCount, people);
     return people;

@@ -31,7 +31,7 @@ public:
     int32_t Serialise(void* file, int32_t save, int32_t version, uint32_t unused);
 };
 static_assert(sizeof(CArrival) == 0x14, "CArrival is 0x14 bytes");
-
-// TPW_PORT_FIX parkrules gArrivalScale, gVisitorLimit | Mac: each bus brings the people the park's attraction points give, and an offline park holds at most 1500 visitors | Port: the bus's people are multiplied by gArrivalScale and the offline limit is gVisitorLimit, which the launcher sets from its Park rules (1 and 1500 keep the Mac's) | Why: the player chooses busier parks in the launcher's Park rules
-extern float gArrivalScale;
-extern int32_t gVisitorLimit;
+// TPW_PORT_FIX parkrules gPortArrivalScale/gPortVisitorLimit | Mac: (none: the bus's people and the 1500 limit are fixed) | Port: the launcher's Park rules, which it sets before the game starts (launcher/main.cpp): the bus's people times 1, 1.5 or 2, and an offline limit of 1500, 3000 or 5000 (CArrival::HowManyPeople) | Why: the player chooses busier parks in the launcher's Park rules; contributed by samueleagle91 (tpw-port PR #23)
+// 1 and 1500 unless the launcher sets them, so a program that does not (the differential tests) counts the Mac's people.
+inline float gPortArrivalScale = 1.0f;
+inline int32_t gPortVisitorLimit = 1500;

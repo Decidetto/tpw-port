@@ -20,21 +20,16 @@
 
 namespace tpw::ui {
 
-// launcher.ini's key for the Settings box's "Skip the intro films" ("1" skips them).
+// launcher.ini's key for the Settings box's "Skip the intro films" ("1" skips them). From tpw-port PR #10 by samueleagle91.
 inline constexpr const char* kSkipIntroKey = "skip_intro";
 // launcher.ini's key for the Settings box's "Back to the launcher after playing" ("1": the launcher opens again when the
-// game quits).
+// game quits). From tpw-port PR #22 by samueleagle91.
 inline constexpr const char* kBackToLauncherKey = "back_to_launcher";
-// launcher.ini's key for the Settings box's "Smooth wheel zoom" ("1": the wheel eases the zoom toward the pointer; absent
-// or "0": the original's step toward the middle of the screen).
-inline constexpr const char* kSmoothZoomKey = "smooth_wheel_zoom";
 // launcher.ini's keys for the Park rules box: "Visitors arriving" (normal, more or many: each bus brings 1, 1.5 or 2 times
-// the people) and "Visitor limit" (1500, 3000 or 5000 in an offline park). Absent: normal and 1500, as the original.
+// the people) and "Visitor limit" (1500, 3000 or 5000 in an offline park). Absent: normal and 1500, as the original. From
+// tpw-port PR #23 by samueleagle91.
 inline constexpr const char* kVisitorArrivalsKey = "visitor_arrivals";
 inline constexpr const char* kVisitorLimitKey = "visitor_limit";
-// launcher.ini's key for the Settings box's "Interface size": 100, 85 or 70, the share of the screen's height the game's
-// panels are laid out in (absent: 100, as the original).
-inline constexpr const char* kInterfaceSizeKey = "interface_size";
 
 // What the player chose to start.
 struct LaunchChoice {
@@ -59,6 +54,8 @@ public:
 
     // The window the file dialogs belong to (none in the test: Browse then says so).
     void SetWindow(SDL_Window* window) { window_ = window; }
+    // The folder of the launcher's log files (launcher/main.cpp): the About box's Show logs opens it. Empty: no button.
+    void SetLogsFolder(const std::string& folder) { logsFolder_ = folder; }
     // Pointer coordinates are the window's, in points.
     void HandleEvent(const SDL_Event& event);
     // Updates and draws one frame of `width` x `height` points at `scale` pixels per point. Does not present.
@@ -95,6 +92,11 @@ public:
     Rect TileRect(int index) const { return tilesShown_ ? tileRects_[index] : Rect{}; }
     // The all-confirmed home's Play button of a tile (0 US, 1 European) in the last frame, in points (empty when not shown).
     Rect ReadyPlayRect(int index) const { return readyShown_ ? readyPlay_[index] : Rect{}; }
+    // Where the last frame drew the launcher's version ("v0.0.2", the footer's bottom right corner), in points; empty
+    // when not shown.
+    Rect VersionRect() const { return versionRect_; }
+    // The About box's Show logs button in the last frame, in points (empty when not shown).
+    Rect ShowLogsRect() const { return showLogsRect_; }
 
 private:
     struct DialogInbox;
@@ -116,6 +118,7 @@ private:
     void DrawBackdrop(const Rect& window);
     float DrawHeader(const Rect& window, bool buttons);
     void DrawTiles(const Rect& row, bool dropTargets);
+    Rect DrawFooter(const Rect& window);   // the tagline, the disclaimer and the version; returns where it drew
     void DrawHome(const Rect& window);
     void DrawReady(const Rect& window);
     void DrawChecking(const Rect& window);
@@ -139,8 +142,6 @@ private:
     int visitorLimit_ = 0;   // its "Visitor limit": 0 1500, 1 3000, 2 5000
     bool skipIntro_ = false;   // the Settings box's "Skip the intro films", as launcher.ini keeps it
     bool backToLauncher_ = false;   // the Settings box's "Back to the launcher after playing", as launcher.ini keeps it
-    bool smoothZoom_ = false;       // the Settings box's "Smooth wheel zoom", as launcher.ini keeps it
-    int interfaceSize_ = 0;         // the Settings box's "Interface size": 0 100%, 1 85%, 2 70%
 
     // A drag over the window.
     bool dragging_ = false;
@@ -151,6 +152,9 @@ private:
     bool tilesShown_ = false;
     Rect readyPlay_[2];
     bool readyShown_ = false;
+    Rect versionRect_;         // last frame's version text (VersionRect)
+    Rect showLogsRect_;        // last frame's Show logs button
+    std::string logsFolder_;
 
     // The editions' states, refreshed every frame.
     assets::EditionStatus status_[3];

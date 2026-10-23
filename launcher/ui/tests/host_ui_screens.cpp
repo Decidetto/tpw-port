@@ -575,6 +575,7 @@ std::vector<Shot> Shots() {
 
     shots.push_back({"12-about", metric::kStartWidth, metric::kStartHeight, nullptr,
                      [](LauncherUi& ui, FakeBackend&, const std::function<void(int)>&) {
+                         ui.SetLogsFolder("/Users/player/Library/Application Support/STP-TPW Launcher/logs");
                          ui.ShowAbout(true);
                          CheckAboutRows(ui);
                      },
@@ -667,6 +668,9 @@ std::vector<Shot> Shots() {
 // ---- checks that need no pictures
 
 void CheckTexts() {
+    CheckEq(FileUrl("/Users/a b/Library/Application Support/STP-TPW Launcher/logs"),
+            "file:///Users/a%20b/Library/Application%20Support/STP-TPW%20Launcher/logs", "FileUrl: spaces");
+    CheckEq(FileUrl("/Users/Ren\xC3\xA9" "e/logs#1"), "file:///Users/Ren%C3%A9e/logs%231", "FileUrl: UTF-8 and '#'");
     CheckEq(FormatCount(0), "0", "FormatCount 0");
     CheckEq(FormatCount(999), "999", "FormatCount 999");
     CheckEq(FormatCount(1683), "1,683", "FormatCount 1683");
@@ -895,6 +899,51 @@ void CheckReady(SDL_Renderer* renderer) {
     Check(ui.ReadyPlayRect(0).w == 0 && ui.TileRect(2).w > 0, "Gold missing: the three tiles again");
 }
 
+bool Overlaps(const Rect& a, const Rect& b) {
+    return a.w > 0 && b.w > 0 && a.x < b.Right() && b.x < a.Right() && a.y < b.Bottom() && b.y < a.Bottom();
+}
+
+// The launcher's version in the footer's corner, clear of the tiles and their Play buttons at the start size and the
+// smallest, on both homes; and the About box's Show logs button, there only when the window has a logs folder.
+void CheckVersionAndLogs(SDL_Renderer* renderer) {
+    for (bool ready : {false, true}) {
+        for (int size = 0; size < 2; ++size) {
+            const float w = size == 0 ? metric::kStartWidth : metric::kMinWidth;
+            const float h = size == 0 ? metric::kStartHeight : metric::kMinHeight;
+            const std::string what = std::string(ready ? "all-confirmed home" : "home") + " at " +
+                                     std::to_string(static_cast<int>(w)) + "x" + std::to_string(static_cast<int>(h));
+            FakeBackend b;
+            if (ready) FillEverything(b);
+            LauncherUi ui(renderer, b);
+            ui.Frame(kDt, w, h, 1);
+            const Rect v = ui.VersionRect();
+            Check(v.w > 0 && v.h > 0, what + ": the version is drawn");
+            Check(v.x >= 0 && v.Right() <= w && v.Bottom() <= h && v.y > h * 0.75f,
+                  what + ": the version is in the bottom corner");
+            for (int i = 0; i < 3; ++i) Check(!Overlaps(v, ui.TileRect(i)), what + ": the version is clear of tile " + std::to_string(i));
+            for (int i = 0; i < 2; ++i)
+                Check(!Overlaps(v, ui.ReadyPlayRect(i)), what + ": the version is clear of Play " + std::to_string(i));
+            if (ready) Check(ui.ReadyPlayRect(0).w > 0, what + ": the Play buttons are drawn");
+        }
+    }
+    FakeBackend b;
+    LauncherUi ui(renderer, b);
+    ui.ShowAbout(true);
+    ui.Frame(kDt, metric::kStartWidth, metric::kStartHeight, 1);
+    Check(ui.ShowLogsRect().w == 0, "About: no Show logs without a logs folder");
+    ui.SetLogsFolder("/Users/player/Library/Application Support/STP-TPW Launcher/logs");
+    ui.Frame(kDt, metric::kStartWidth, metric::kStartHeight, 1);
+    const Rect logs = ui.ShowLogsRect();
+    Check(logs.w > 0 && logs.Bottom() < metric::kStartHeight, "About: Show logs is drawn with a logs folder");
+    ui.SetLogsFolder("/Users/player/Library/Application Support/STP-TPW Launcher/logs");
+    ui.Frame(kDt, metric::kMinWidth, metric::kMinHeight, 1);
+    Check(ui.ShowLogsRect().w > 0 && ui.ShowLogsRect().Bottom() < metric::kMinHeight,
+          "About: Show logs fits the smallest window");
+    ui.ShowAbout(false);
+    ui.Frame(kDt, metric::kStartWidth, metric::kStartHeight, 1);
+    Check(ui.ShowLogsRect().w == 0, "About closed: no Show logs");
+}
+
 // The real backend over an empty data folder: the European edition counts the US Mac program as one more required
 // file from the US Mac CD until a file of the program's size is in place (the program's content is not needed here: the
 // importer, too, counts a file of an accepted size as present). The folder is made under the screens folder and
@@ -962,6 +1011,7 @@ int main(int argc, char** argv) {
         CheckButton(renderer);
         CheckDrops(renderer);
         CheckReady(renderer);
+        CheckVersionAndLogs(renderer);
         SDL_DestroyRenderer(renderer);
     }
     SDL_DestroySurface(scratch);

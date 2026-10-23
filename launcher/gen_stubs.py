@@ -36,6 +36,7 @@ import subprocess
 import sys
 
 DARWIN = sys.platform == "darwin"
+# The WINDOWS parts of this file: Windows port contributed by samueleagle91 (tpw-port PR #1).
 WINDOWS = sys.platform == "win32"
 # Scopes whose functions belong to the platform layer rather than to the game.
 PLATFORM_SCOPES = ("NS_MacDoze::", "SamsUtilities::", "IDirectDraw", "IdxDirectDraw::", "IDirect3D")
