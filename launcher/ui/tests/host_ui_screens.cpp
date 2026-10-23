@@ -1006,6 +1006,7 @@ void CheckSettingsScroll(SDL_Renderer* renderer) {
     const Rect start = ui.InterfaceSizeRect();
     Check(start.w > 0 && start.Bottom() > height - metric::kMargin,
           "settings: in the smallest window the last row starts below the box");
+    Check(ui.SettingsScrolls(), "settings: in the smallest window the box scrolls");
 
     ui.HandleEvent(MotionEvent(10, height * 0.5f));   // beside the box
     ui.HandleEvent(WheelEvent(-10));
@@ -1042,15 +1043,19 @@ void CheckSettingsScroll(SDL_Renderer* renderer) {
     frames(1);
     Check(ui.InterfaceSizeRect().y == start.y, "settings: opened again, the box starts at its top");
 
+    // Tall windows, the box only just fitting at some heights: no clip and no bar, whatever the rounding.
     width = 1100;
-    height = 760;
-    frames(1);
-    const Rect tall = ui.InterfaceSizeRect();
-    ui.HandleEvent(MotionEvent(width * 0.5f, height * 0.5f));
-    ui.HandleEvent(WheelEvent(-10));
-    frames(1);
-    Check(tall.Bottom() < height - metric::kMargin && ui.InterfaceSizeRect().y == tall.y,
-          "settings: in a tall window the box fits and the wheel moves nothing");
+    for (const float tallHeight : {760.0f, 761.0f, 800.0f}) {
+        height = tallHeight;
+        frames(1);
+        const Rect tall = ui.InterfaceSizeRect();
+        ui.HandleEvent(MotionEvent(width * 0.5f, height * 0.5f));
+        ui.HandleEvent(WheelEvent(-10));
+        frames(1);
+        Check(tall.Bottom() < height - metric::kMargin && ui.InterfaceSizeRect().y == tall.y,
+              "settings: in a tall window the box fits and the wheel moves nothing");
+        Check(!ui.SettingsScrolls(), "settings: in a tall window the box does not scroll, so no bar is drawn");
+    }
 }
 
 // The real backend over an empty data folder: the European edition counts the US Mac program as one more required

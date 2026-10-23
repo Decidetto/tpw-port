@@ -98,6 +98,8 @@ public:
     // The Settings box's Interface size switch, its last row, where the last frame drew it (scrolled with the box), in
     // points (empty when the box is closed).
     Rect InterfaceSizeRect() const { return settingsOpen_ ? interfaceSizeRect_ : Rect{}; }
+    // Whether the last frame scrolled the Settings box, with its clip and its bar (false when the box is closed).
+    bool SettingsScrolls() const { return settingsOpen_ && settingsScrolls_; }
 
 private:
     struct DialogInbox;
@@ -184,6 +186,7 @@ private:
     int armedRemove_ = -1;
     std::string settingsMessage_;
     Rect interfaceSizeRect_;   // last frame's (InterfaceSizeRect)
+    bool settingsScrolls_ = false;   // last frame's (SettingsScrolls)
 
     std::string notice_;
     bool noticeProblem_ = false;

@@ -832,11 +832,13 @@ void LauncherUi::DrawSettings(const Rect& w) {
 
     // A window too short for the rest scrolls it under the title: the wheel anywhere over the box moves it a row a
     // line, and a bar in the right margin shows where it is. It is clipped below the Close button and at the box's
-    // outline, so the row below the view shows its top.
+    // outline, so the row below the view shows its top. Whether it scrolls is whether the box was capped, an exact
+    // comparison: `bodyH - shown` can come out a hair above 0 in a box that fits.
     const float bodyTop = y, shown = in.Bottom() - bodyTop;
-    const float maxOffset = std::max(0.0f, bodyH - shown);
+    settingsScrolls_ = ph < titleH + bodyH + 40;
+    const float maxOffset = settingsScrolls_ ? std::max(0.0f, bodyH - shown) : 0.0f;
     float offset = 0;
-    if (maxOffset > 0) {
+    if (settingsScrolls_) {
         offset = ui_.Scroll("settings", panel, rowH, maxOffset);
         ui_.Clip({panel.x + metric::kOutline, bodyTop, panel.w - 2 * metric::kOutline,
                   panel.Bottom() - metric::kOutline - bodyTop});
@@ -987,7 +989,7 @@ void LauncherUi::DrawSettings(const Rect& w) {
     } else if (!settingsMessage_.empty()) {
         text_.DrawWrapped(style::kSmallBold, in.x, y, in.w, settingsMessage_, colour::kInk);
     }
-    if (maxOffset > 0) {
+    if (settingsScrolls_) {
         ui_.Unclip();
         const float barW = 6, margin = panel.Right() - metric::kOutline - in.Right();
         ui_.ScrollBar({in.Right() + std::round((margin - barW) * 0.5f), bodyTop, barW, shown}, shown, bodyH, offset,
