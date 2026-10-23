@@ -32,7 +32,6 @@
 
 #include "TPMain.h"
 #include "tpw_probe.h"
-#include "Arrival.h"
 #include "ResolutionBalance.h"
 #include "UI_Base.h"
 #include "lobby.h"
@@ -560,25 +559,24 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     // The launcher's settings are written to launcher.ini again here, after the importer's last write of the file (the
     // choice it saved on Play), which kept the importer's older copy of the keys. "Skip the intro films" is as
     // --no-movies; "Back to the launcher after playing" opens the launcher again when a game started from its window
-    // quits (ReopenLauncher). From tpw-port PRs #10, #20, #22, #23 and #24 by samueleagle91.
-    for (const char* key : {tpw::ui::kSkipIntroKey, tpw::ui::kBackToLauncherKey, tpw::ui::kVisitorArrivalsKey,
-                            tpw::ui::kVisitorLimitKey, tpw::ui::kSmoothZoomKey,
+    // quits (ReopenLauncher). From tpw-port PRs #10, #20, #22 and #24 by samueleagle91.
+    for (const char* key : {tpw::ui::kSkipIntroKey, tpw::ui::kBackToLauncherKey, tpw::ui::kSmoothZoomKey,
                             tpw::ui::kInterfaceSizeKey}) {
         const std::string value = backend.Setting(key);
         std::string ignored;
         if (!value.empty()) tpw::ui::ImporterBackend::SaveIniExtra(prefPath, key, value, ignored);
     }
     gBackToLauncher = choice.backToLauncher;
-#ifdef TPW_PORT_FIX
-    {   // the Park rules box (CArrival::HowManyPeople)
-        const std::string arrivals = backend.Setting(tpw::ui::kVisitorArrivalsKey);
-        gPortArrivalScale = arrivals == "more" ? 1.5f : arrivals == "many" ? 2.0f : 1.0f;
-        const std::string limit = backend.Setting(tpw::ui::kVisitorLimitKey);
-        gPortVisitorLimit = limit == "3000" ? 3000 : limit == "5000" ? 5000 : 1500;
-        if (gPortArrivalScale != 1.0f || gPortVisitorLimit != 1500)
-            tpw::Log("park rules: visitors arriving x%.1f, visitor limit %d", static_cast<double>(gPortArrivalScale),
-                     static_cast<int>(gPortVisitorLimit));
+    // The Park rules box (tpw-port PR #23: more visitors per bus, a higher visitor limit) left the port, which changes
+    // only how the game is shown and driven, never how a park plays; it is to become a tpw-mods mod. A launcher.ini that
+    // still has its keys keeps them, and they are ignored.
+    for (const char* key : {"visitor_arrivals", "visitor_limit"}) {
+        const std::string value = backend.Setting(key);
+        if (!value.empty())
+            tpw::Log("park rules: launcher.ini's %s=%s is ignored (Park rules are no longer part of the port)", key,
+                     value.c_str());
     }
+#ifdef TPW_PORT_FIX
     // The Settings box's "Smooth wheel zoom" (Will_HandleCameraMessages); off, the original's step, by default.
     gUISmoothWheelZoom = backend.Setting(tpw::ui::kSmoothZoomKey) == "1" ? 1 : 0;
     if (gUISmoothWheelZoom != 0) tpw::Log("smooth wheel zoom (the launcher's Settings)");

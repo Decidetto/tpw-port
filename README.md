@@ -1,7 +1,7 @@
 # tpw-port
 
-An unofficial port of Sim Theme Park (AKA Theme Park World, 1999) for Apple Silicon Macs and 64-bit Windows. You need your
-own copy of the game. Nothing from the game is in here.
+An unofficial port of Sim Theme Park (AKA Theme Park World, 1999) for Macs (Apple Silicon and Intel) and 64-bit Windows.
+You need your own copy of the game. Nothing from the game is in here.
 
 Not affiliated with or endorsed by Electronic Arts. Sim Theme Park and Theme Park World are trademarks of their
 respective owners.
@@ -10,7 +10,7 @@ respective owners.
 
 ### macOS
 
-On a Mac with Apple Silicon, in Terminal:
+On a Mac with Apple Silicon or an Intel processor, in Terminal:
 
     git clone --recurse-submodules https://github.com/ThemeParkWorldDecomp/tpw-port.git
     cd tpw-port && make
@@ -22,7 +22,8 @@ folder. Nothing else is installed.
 
 ### Windows
 
-On a PC with 64-bit Windows 10 (version 1803 or newer) or Windows 11, install Git once if you do not have it:
+On a PC with 64-bit Windows 10 (version 1803 or newer) or Windows 11, Intel, AMD or Arm (an Arm PC needs Windows 11),
+install Git once if you do not have it:
 
     winget install Git.Git
 
@@ -64,7 +65,8 @@ The Settings box has these rows:
 
 ## What you need
 
-- A Mac with Apple Silicon (M1 or later), or a PC with 64-bit Windows 10 or 11, and about 2.5 GB of free space.
+- A Mac (Apple Silicon or Intel), or a PC with 64-bit Windows 10 or 11 (Intel, AMD or Arm; an Arm PC needs Windows 11),
+  and about 2.5 GB of free space.
 - Your own copy of the game:
   - The US Mac CD gives Sim Theme Park.
   - The Mac CD plus the European PC CD give Theme Park World too. Only the 2000 pressings of the PC CD work (Redump
@@ -97,9 +99,11 @@ on the Mac, bugs included. This repository adds what it takes to play:
   names nothing defines yet.
 - platform/: the Mac Toolbox, Sound Sprockets, QuickTime and the game's Windows-style shims, done on SDL3, OpenGL and
   CoreText (on Windows, stb_truetype in place of CoreText).
-- overrides/: the port's fixes, 127 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what
+- overrides/: the port's fixes, 125 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what
   the port does and why. Each file there is built in place of the tpw-decomp file of the same path. Headers are read
   from a copy of tpw-decomp's headers in the build folder with the overridden ones laid over it.
+- mods/: the [tpw-mods](https://github.com/ThemeParkWorldDecomp/tpw-mods) submodule, for optional changes to how the game plays. It holds no mods yet
+  and the launcher has no Mods screen yet; the port builds and plays the same without it.
 
 ### The Windows build
 
@@ -236,26 +240,29 @@ The recipes' pass numbers are timed without the 60 frames a second pacing, so th
 
 ## Contributing
 
-Pull requests are welcome here, for anything: fixes, other systems (Linux, for example), build changes, tools. The rules:
+The project is three repositories, and every change belongs in exactly one of them:
 
-- The tpw-decomp submodule is never touched. Its pointer stays at the upstream commit.
-- A changed game source file is a whole-file copy under overrides/ at the same path, with a row in FIXES.md: what the Mac
-  does, what the port does and why.
-- Host code for another system goes under platform/ and launcher/, behind that system's macro.
-- Test aids stay out of a pull request.
-- One concern per commit.
+| Repository | What it holds | Pull requests |
+| --- | --- | --- |
+| [tpw-decomp](https://github.com/ThemeParkWorldDecomp/tpw-decomp) | The translation: the Mac program's own functions in C++, each behaving exactly as the Mac build does, bugs included, with the differential tests that check it. | None. A function that behaves differently from the Mac is reported as an issue on tpw-port. |
+| [tpw-port](https://github.com/ThemeParkWorldDecomp/tpw-port) | The original game on today's Macs and Windows PCs: the launcher, the platform layer, the builds, and the fixes that make it run as it did on the Mac. | Welcome, by its CONTRIBUTING.md. |
+| [tpw-mods](https://github.com/ThemeParkWorldDecomp/tpw-mods) | Optional changes to how the game plays, each one off until the player turns it on. tpw-port carries it as a submodule at mods/. | Welcome, by its CONTRIBUTING.md. |
 
-How a change lands: both public repositories are exported from one private working tree, so a pull request is not merged on
-GitHub. An accepted change is re-landed in that tree (changes to game files as `#ifdef TPW_PORT_FIX` blocks, which the
-export turns into the files under overrides/) and appears in the next export, with the contributor credited in the commit
-message and in FIXES.md. The pull request is then closed. tpw-decomp itself takes no pull requests.
+The test for where a change goes: does a park play the same with it on and with it off? If it does, the change belongs in
+tpw-port. If it changes the rules, the money, the visitors, the staff, the rides, the advisor, the game's content, what a
+control does or the save files, it belongs in tpw-mods, even as a setting that is off by default.
+
+Pull requests are welcome here for anything that passes that test: fixes, other systems (Linux, for example), build
+changes, tools. [CONTRIBUTING.md](CONTRIBUTING.md) has the rules, including the three a setting must meet. An accepted
+pull request is merged here and also made in the private working tree both tpw-decomp and tpw-port are exported from,
+so every later export keeps it.
 
 Contributors: samueleagle91 (spamaerie on Discord) made the Windows build (pull request #1).
 
 Every push and pull request is built and tested by GitHub Actions (.github/workflows/build.yml): on Windows Server 2022
 and 2025 (the nearest GitHub has to the Windows 10 and 11 kernels; 2025 is the build of Windows 11 24H2), on Windows 11
-on Arm (under its x64 emulation) and on macOS. Each Windows build also starts the launcher once (--version), and each
-run keeps the launchers it built as artifacts.
+on Arm (under its x64 emulation) and on macOS (Apple Silicon and Intel). Each Windows build also starts the launcher
+once (--version), and each run keeps the launchers it built as artifacts.
 
 Issues are welcome too. A useful bug report says which edition you play (US, European or Gold), attaches the launcher's newest
 log (`~/Library/Application Support/STP-TPW Launcher/logs` on a Mac, `%APPDATA%\STP-TPW Launcher\logs` on Windows; its
@@ -265,6 +272,7 @@ wrong.
 ## See also
 
 - [tpw-decomp](https://github.com/ThemeParkWorldDecomp/tpw-decomp): the translation and its differential tests.
+- [tpw-mods](https://github.com/ThemeParkWorldDecomp/tpw-mods): optional changes to how the game plays.
 - [FIXES.md](FIXES.md): every place the port behaves differently from the Mac.
 
 No license has been chosen yet for the port's own code. third_party/ffmpeg is FFmpeg 9.0.2 (trimmed), under the GNU LGPL
