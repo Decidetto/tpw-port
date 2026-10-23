@@ -22,27 +22,25 @@ folder. Nothing else is installed.
 
 ### Windows
 
-On 64-bit Windows 10 or 11, in PowerShell, the build tools:
+On a PC with 64-bit Windows 10 or 11, in PowerShell or a Command Prompt:
 
-    winget install Git.Git Kitware.CMake Ninja-build.Ninja Python.Python.3.14
-
-and llvm-mingw: download llvm-mingw-20261006-ucrt-x86_64.zip from
-https://github.com/mstorsjo/llvm-mingw/releases/tag/20261006 and extract it, for example to C:\llvm-mingw. Then, in a
-new PowerShell window (so that winget's tools are on the PATH):
-
+    winget install Git.Git
     git -c core.autocrlf=false clone --recurse-submodules https://github.com/ThemeParkWorldDecomp/tpw-port.git
     cd tpw-port
-    $env:PATH = "C:\llvm-mingw\bin;$env:PATH"
-    cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-    cmake --build build --target tpw_launcher
-    build\tpw_launcher.exe
+    .\build.cmd
 
-The clone keeps the files' line endings as they are (core.autocrlf=false). The first build takes a few minutes. The
-launcher is one .exe that needs nothing beside it.
+Then `.\run.cmd` starts the launcher (or double-click build\tpw_launcher.exe). If you have Git already, skip the first
+line; if winget has just installed it, open a new window first so that git is on the PATH.
+
+Git for Windows is the only thing installed. build.cmd fetches the rest into build\tools\, in the versions the Windows
+build was tested with, each checked against its publisher's SHA-256: llvm-mingw (the compiler), CMake, Ninja and Python
+(about 250 MB to download, once). `.\build.cmd clean` deletes build\ with those tools. The clone keeps the files' line
+endings as they are (core.autocrlf=false). The first build takes a few minutes. The launcher is one .exe that needs
+nothing beside it.
 
 ### Playing
 
-`make run` (on Windows, `build\tpw_launcher.exe`) opens the launcher. Drop your game disc on its window: the Mac CD, the
+`make run` (on Windows, `.\run.cmd` or `build\tpw_launcher.exe`) opens the launcher. Drop your game disc on its window: the Mac CD, the
 PC CD, or a zip or disc image of either. The launcher checks every file and ticks off the editions it finds. Press Play:
 a progress bar shows while the game starts, and the launcher's window closes when the game's window appears. Once the
 US, European and Gold discs are all checked, the window shows just two tiles, Theme Park World and Sim Theme Park, each
@@ -69,7 +67,7 @@ The Settings box has these rows:
 - No patches. The port is built from the last Mac patch (2.04b3) and reads only the game's data files.
 
 Your checked game files and your saves live in `~/Library/Application Support/STP-TPW Launcher` on a Mac and in
-`%APPDATA%\STP-TPW Launcher` on Windows. `make clean` never touches that folder. Each run's log goes to its logs folder
+`%APPDATA%\STP-TPW Launcher` on Windows. `make clean` and `build.cmd clean` never touch that folder. Each run's log goes to its logs folder
 (launcher-YYYYMMDD-HHMMSS.log, the 10 most recent runs kept; the About box's Show logs button opens it), and
 `tpw_launcher --version` prints the launcher's version. On Windows the launcher has no console: what it prints goes to
 launcher.log in that folder too, unless its output is redirected (`build\tpw_launcher.exe 2> log.txt`).
@@ -100,7 +98,12 @@ on the Mac, bugs included. This repository adds what it takes to play:
 ### The Windows build
 
 It was built and tested with llvm-mingw 20261006 (UCRT, x86-64, clang 23.1.3), CMake 4.4.4, Ninja 1.13.2, Python 3.14.7
-and Git 2.55.0 on Windows 10 22H2. What it does differently is all in the platform layer and the build: the signs' text
+and Git 2.55.0 on Windows 10 22H2. build.cmd hands to devtools/win/build.ps1 (Windows PowerShell 5.1, part of Windows,
+run with -ExecutionPolicy Bypass), which fetches those versions of the first four (Python as the embeddable package) and
+pins each with its SHA-256. It takes a tool from the PATH instead when the version there is usable: a MinGW clang for
+x86-64 not older than 23.1.3, CMake 3.20 or newer, Ninja 1.10 or newer, Python 3.10 or newer. It prints which it chose.
+`.\build.cmd TOOLS=fetch` fetches all four whatever the PATH has, `.\build.cmd test` builds everything and runs the
+tests, `BUILD=<folder>` builds in another folder, and each step's output is kept in build\logs\. What it does differently is all in the platform layer and the build: the signs' text
 is drawn with stb_truetype (platform/gdi_text_win.cpp) from the game's fonts and the Windows fonts folder; the POSIX
 calls MinGW lacks are in platform/win and platform/posix_win.cpp; a division the x86 traps (by zero, INT_MIN / -1) gets
 the answer the Mac's processor gives (platform/host_win.cpp); and the build makes its own copy of the one tpw-decomp file
@@ -118,6 +121,16 @@ a trimmed FFmpeg are built from source with the port (third_party/).
     cd tpw-port
     cmake -S . -B build
     cmake --build build -j8 --target tpw_launcher
+
+On Windows, with your own toolchain (llvm-mingw extracted to C:\llvm-mingw, CMake, Ninja and Python 3 on the PATH), the
+same in PowerShell:
+
+    git -c core.autocrlf=false clone --recurse-submodules https://github.com/ThemeParkWorldDecomp/tpw-port.git
+    cd tpw-port
+    $env:PATH = "C:\llvm-mingw\bin;$env:PATH"
+    cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+    cmake --build build --target tpw_launcher
+    build\tpw_launcher.exe
 
 -DTPW_MOVIES=OFF builds without the films. The launcher reads the game's data tables at run time from the game folder's
 "SimTheme Park" program (or the one --program names), so the build holds none of them. -DTPW_TABLES_AT_CONFIGURE=ON
@@ -229,6 +242,11 @@ export turns into the files under overrides/) and appears in the next export, wi
 message and in FIXES.md. The pull request is then closed. tpw-decomp itself takes no pull requests.
 
 Contributors: samueleagle91 (spamaerie on Discord) made the Windows build (pull request #1).
+
+Every push and pull request is built and tested by GitHub Actions (.github/workflows/build.yml): on Windows Server 2022
+and 2025 (the nearest GitHub has to the Windows 10 and 11 kernels; 2025 is the build of Windows 11 24H2), on Windows 11
+on Arm (under its x64 emulation) and on macOS. Each Windows build also starts the launcher once (--version), and each
+run keeps the launchers it built as artifacts.
 
 Issues are welcome too. A useful bug report says which edition you play (US, European or Gold), attaches the launcher's newest
 log (`~/Library/Application Support/STP-TPW Launcher/logs` on a Mac, `%APPDATA%\STP-TPW Launcher\logs` on Windows; its
