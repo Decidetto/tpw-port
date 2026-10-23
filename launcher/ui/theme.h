@@ -72,8 +72,8 @@ inline constexpr float kRadius = 16;     // panel corners
 inline constexpr float kOutline = 3;     // the dark outline of panels, tiles and buttons
 inline constexpr float kShadowDrop = 5;  // how far a shadow sits below its panel
 inline constexpr float kShadowBlur = 10;
-// The smallest window the layout is made for: the title row holds the title, its version, Park rules, Settings and
-// About side by side (720 before the version joined it).
+// The smallest window the layout is made for: the title row holds the title, its version, Settings and About side by
+// side (720 before the version joined it).
 inline constexpr int kMinWidth = 760;
 inline constexpr int kMinHeight = 520;
 inline constexpr int kStartWidth = 800;

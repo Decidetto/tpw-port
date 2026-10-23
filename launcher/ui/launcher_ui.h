@@ -28,11 +28,6 @@ inline constexpr const char* kBackToLauncherKey = "back_to_launcher";
 // launcher.ini's key for the Settings box's "Smooth wheel zoom" ("1": the wheel eases the zoom toward the pointer; absent
 // or "0": the original's step toward the middle of the screen). From tpw-port PR #20 by samueleagle91.
 inline constexpr const char* kSmoothZoomKey = "smooth_wheel_zoom";
-// launcher.ini's keys for the Park rules box: "Visitors arriving" (normal, more or many: each bus brings 1, 1.5 or 2 times
-// the people) and "Visitor limit" (1500, 3000 or 5000 in an offline park). Absent: normal and 1500, as the original. From
-// tpw-port PR #23 by samueleagle91.
-inline constexpr const char* kVisitorArrivalsKey = "visitor_arrivals";
-inline constexpr const char* kVisitorLimitKey = "visitor_limit";
 // launcher.ini's key for the Settings box's "Interface size": 100, 85 or 70, the share of the screen's height the game's
 // panels are laid out in (absent: 100, as the original). From tpw-port PR #24 by samueleagle91.
 inline constexpr const char* kInterfaceSizeKey = "interface_size";
@@ -104,7 +99,7 @@ public:
     // The About box's Show logs button in the last frame, in points (empty when not shown).
     Rect ShowLogsRect() const { return showLogsRect_; }
     // The title row in the last frame, in points: the product's name, the version label drawn to its right, and the
-    // header's buttons (About, Settings, Park rules and the header's Play when shown; empty on screens without them).
+    // header's buttons (About, Settings and the header's Play when shown; empty on screens without them).
     Rect TitleRect() const { return titleRect_; }
     Rect TitleVersionRect() const { return titleVersionRect_; }
     Rect HeaderButtonsRect() const { return headerButtonsRect_; }
@@ -136,7 +131,6 @@ private:
     void DrawResult(const Rect& window);
     void DrawPlay(const Rect& window);
     void DrawSettings(const Rect& window);
-    void DrawParkRules(const Rect& window);
     void DrawAbout(const Rect& window);
     void DrawStarting(const Rect& window);
 
@@ -148,9 +142,7 @@ private:
 
     Input input_;              // gathered from events since the last frame
     Screen screen_ = Screen::Home;
-    bool aboutOpen_ = false, settingsOpen_ = false, rulesOpen_ = false;
-    int arrivals_ = 0;       // the Park rules box's "Visitors arriving": 0 normal, 1 more, 2 many
-    int visitorLimit_ = 0;   // its "Visitor limit": 0 1500, 1 3000, 2 5000
+    bool aboutOpen_ = false, settingsOpen_ = false;
     bool skipIntro_ = false;   // the Settings box's "Skip the intro films", as launcher.ini keeps it
     bool backToLauncher_ = false;   // the Settings box's "Back to the launcher after playing", as launcher.ini keeps it
     bool smoothZoom_ = false;       // the Settings box's "Smooth wheel zoom", as launcher.ini keeps it
