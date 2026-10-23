@@ -48,8 +48,12 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 env:
+  # This temporary branch plays the exact binaries from the successful clean build/test matrix.
+  BUILD_RUN_ID: '39975324599'
+  BUILD_SHA: e5a83f531a9b8702be6e6041a48bfc311d157b62
   BUNDLE_URL: https://archive.org/download/sim-theme-park-aka-theme-park-world-1999-gold-edition-cross-platform-eur-na/Sim%20Theme%20Park%20AKA%20Theme%20Park%20World%20%281999%29%20Gold%20Edition%20%28Cross-Platform%20EUR%2BNA%29.zip
   BUNDLE_SIZE: '710280375'
   BUNDLE_SHA256: 397e0571bab0259d4048a303e8be078023c86f0c2d9a31ba7aa0da1e053f2804
@@ -81,9 +85,18 @@ jobs:
           submodules: recursive
       # Fails: build.ps1's exit codes (win-bootstrap): 10 not 64-bit or no curl/tar, 20 a tool's download, 21 its
       # checksum, 22 its unpacking, 30 configure, 40 build. Its logs are in build\logs\ (kept below on failure).
-      - name: Build the launcher (Command Prompt)
-        shell: cmd
-        run: build.cmd TOOLS=fetch
+      - name: Check the source against the tested build
+        shell: bash
+        run: |
+          git fetch --depth=1 origin "$BUILD_SHA"
+          git diff --exit-code "$BUILD_SHA" -- . ':!.github/workflows/play.yml'
+      - name: Use the clean tested launcher
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN_ID }}
+          name: tpw_launcher-${{ matrix.os }}-x64
+          path: build
       # Hosted Windows has no GPU driver. Use a pinned software renderer for these playtests only;
       # this is not bundled in the launcher, and does not change a player's graphics driver.
       - name: Supply Mesa llvmpipe for the hosted desktop
@@ -281,8 +294,19 @@ jobs:
         with:
           submodules: recursive
       # Fails: configure or build errors (make's output).
-      - name: Build the launcher
-        run: make
+      - name: Check the source against the tested build
+        run: |
+          git fetch --depth=1 origin "$BUILD_SHA"
+          git diff --exit-code "$BUILD_SHA" -- . ':!.github/workflows/play.yml'
+      - name: Use the clean tested launcher
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN_ID }}
+          name: tpw_launcher-${{ matrix.os }}-${{ matrix.os == 'macos-15-intel' && 'x64' || 'arm64' }}
+          path: build
+      - name: Restore the executable bit
+        run: chmod +x build/tpw_launcher
       # Fails: the inputs are not a whole number of passes and one or more of us and eur.
       - name: Check the inputs
         run: |
@@ -332,11 +356,17 @@ jobs:
             mkdir -p "$RUNNER_TEMP/tpw-frames/$e"
             set +e
             build/tpw_launcher --data "$RUNNER_TEMP/tpw-data" --play "$e" --mute --no-movies --windowed --display 0 \
-              --aspect 4:3 --resolution 2048x1536 \
-              --click 1326,121@200 --type Tess@230 --click 1418,566@300 --click 143,1177@800 --click 261,1414@2300 \
-              --click 346,1192@2500 --click 504,353@2700 --click 1196,200@2850 \
+              --aspect 4:3 --resolution 1024x768 \
+              --click 663,60@200 --type Tess@230 --click 709,283@300 --click 71,588@800 --click 130,707@2300 \
+              --click 173,596@2500 --click 252,176@2700 --click 598,100@2850 \
               --frames "$FRAMES" --dump-frames "$RUNNER_TEMP/tpw-frames/$e" --dump-every 150 \
-              > "$RUNNER_TEMP/play-out/play-$e.txt" 2>&1
+              > "$RUNNER_TEMP/play-out/play-$e.txt" 2>&1 &
+            pid=$!
+            while kill -0 "$pid" 2>/dev/null; do
+              sleep 20
+              tail -n 3 "$RUNNER_TEMP/play-out/play-$e.txt"
+            done
+            wait "$pid"
             rc=$?
             set -e
             tail -n 15 "$RUNNER_TEMP/play-out/play-$e.txt"
@@ -354,11 +384,17 @@ jobs:
           mkdir -p "$RUNNER_TEMP/tpw-frames/gold"
           set +e
           build/tpw_launcher --data "$RUNNER_TEMP/tpw-data" --window-click 595,372@30 --mute --no-movies --windowed \
-            --display 0 --aspect 4:3 --resolution 2048x1536 \
-            --click 1326,121@200 --type Tess@230 --click 1418,566@300 --click 143,1177@800 --click 261,1414@2300 \
-            --click 346,1192@2500 --click 504,353@2700 --click 1196,200@2850 \
+            --display 0 --aspect 4:3 --resolution 1024x768 \
+            --click 663,60@200 --type Tess@230 --click 709,283@300 --click 71,588@800 --click 130,707@2300 \
+            --click 173,596@2500 --click 252,176@2700 --click 598,100@2850 \
             --frames "$FRAMES" --dump-frames "$RUNNER_TEMP/tpw-frames/gold" --dump-every 150 \
-            > "$RUNNER_TEMP/play-out/play-gold.txt" 2>&1
+            > "$RUNNER_TEMP/play-out/play-gold.txt" 2>&1 &
+          pid=$!
+          while kill -0 "$pid" 2>/dev/null; do
+            sleep 20
+            tail -n 3 "$RUNNER_TEMP/play-out/play-gold.txt"
+          done
+          wait "$pid"
           rc=$?
           set -e
           tail -n 15 "$RUNNER_TEMP/play-out/play-gold.txt"
