@@ -288,13 +288,14 @@ function Slash([string]$path) { return $path.Replace('\', '/') }
 # A standalone exe must run without the build tools on PATH. The port links its runtimes statically; check the
 # actual PE imports as well, so a toolchain change cannot silently add libc++.dll or another redistributable.
 function Test-Imports([string]$program) {
-    $objdump = Join-Path $ClangBin 'llvm-objdump.exe'
-    if (-not (Test-Path -LiteralPath $objdump)) {
-        Fail 45 @("The compiler has no llvm-objdump.exe beside it: $ClangBin", 'Run build.cmd TOOLS=fetch to use the checked toolchain.')
+    $readobj = Join-Path $ClangBin 'llvm-readobj.exe'
+    if (-not (Test-Path -LiteralPath $readobj)) {
+        Fail 45 @("The compiler has no llvm-readobj.exe beside it: $ClangBin", 'Run build.cmd TOOLS=fetch to use the checked toolchain.')
     }
-    $output = & $objdump -p $program 2>&1
+    # --coff-imports excludes the export table's own DLL Name (the executable's filename).
+    $output = & $readobj --coff-imports $program 2>&1
     if ($LASTEXITCODE -ne 0) { Fail 45 @("Could not inspect the DLL imports of $program.", ($output | Out-String)) }
-    $dlls = @($output | ForEach-Object { if ("$_" -match 'DLL Name:\s*(\S+)') { $Matches[1].ToLowerInvariant() } } | Sort-Object -Unique)
+    $dlls = @($output | ForEach-Object { if ("$_" -match '^\s*Name:\s*(\S+)') { $Matches[1].ToLowerInvariant() } } | Sort-Object -Unique)
     if ($dlls.Count -eq 0) { Fail 45 @("No DLL import table found in $program.") }
     $system = @('advapi32.dll', 'avrt.dll', 'bcrypt.dll', 'cfgmgr32.dll', 'comctl32.dll', 'comdlg32.dll',
         'crypt32.dll', 'd3d11.dll', 'd3d12.dll', 'dinput8.dll', 'dwmapi.dll', 'dwrite.dll', 'dxgi.dll',
