@@ -95,6 +95,9 @@ public:
     Rect TileRect(int index) const { return tilesShown_ ? tileRects_[index] : Rect{}; }
     // The all-confirmed home's Play button of a tile (0 US, 1 European) in the last frame, in points (empty when not shown).
     Rect ReadyPlayRect(int index) const { return readyShown_ ? readyPlay_[index] : Rect{}; }
+    // The Settings box's Interface size switch, its last row, where the last frame drew it (scrolled with the box), in
+    // points (empty when the box is closed).
+    Rect InterfaceSizeRect() const { return settingsOpen_ ? interfaceSizeRect_ : Rect{}; }
 
 private:
     struct DialogInbox;
@@ -180,6 +183,7 @@ private:
     int verifyIndex_ = -1;
     int armedRemove_ = -1;
     std::string settingsMessage_;
+    Rect interfaceSizeRect_;   // last frame's (InterfaceSizeRect)
 
     std::string notice_;
     bool noticeProblem_ = false;
