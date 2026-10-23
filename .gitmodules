@@ -1,6 +1,3 @@
 [submodule "tpw-decomp"]
 	path = tpw-decomp
 	url = ../tpw-decomp
-[submodule "mods"]
-	path = mods
-	url = ../tpw-mods
