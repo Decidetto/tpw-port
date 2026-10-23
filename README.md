@@ -47,7 +47,16 @@ PC CD, or a zip or disc image of either. The launcher checks every file and tick
 a progress bar shows while the game starts, and the launcher's window closes when the game's window appears. Once the
 US, European and Gold discs are all checked, the window shows just two tiles, Theme Park World and Sim Theme Park, each
 with its own Play button. At every start the launcher compares each file's size and date with what it recorded,
-rehashes only the files that changed and removes any that no longer match. Check again in Settings rehashes every file.
+rehashes only the files that changed and removes any that no longer match.
+
+The Settings box has these rows:
+
+- Skip the intro films: off by default.
+- Back to the launcher: off by default.
+- Smooth wheel zoom: off by default, which keeps the original's step zoom. On, the wheel eases the zoom toward the pointer.
+- Interface size: 100% by default, the original. 85% or 70% shrink the panels so the park shows more, with the panels
+  still at the edges of the screen.
+- Check again: rehashes every file.
 
 ## What you need
 
@@ -84,7 +93,7 @@ on the Mac, bugs included. This repository adds what it takes to play:
   names nothing defines yet.
 - platform/: the Mac Toolbox, Sound Sprockets, QuickTime and the game's Windows-style shims, done on SDL3, OpenGL and
   CoreText (on Windows, stb_truetype in place of CoreText).
-- overrides/: the port's fixes, 89 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what
+- overrides/: the port's fixes, 127 so far, each one listed in [FIXES.md](FIXES.md) with what the Mac does, what
   the port does and why. Each file there is built in place of the tpw-decomp file of the same path. Headers are read
   from a copy of tpw-decomp's headers in the build folder with the overridden ones laid over it.
 
@@ -173,16 +182,19 @@ display.
 
 The port runs as a real full-screen window, a Space of its own with the menu bar and the dock hidden (Cmd+Ctrl+F
 leaves and re-enters it; --windowed opens a window with a title bar; --background keeps a window fitted to the screen
-behind the others), and waits for the display's refresh (vsync). It is widescreen by default: 16:9 at 3840 x 2160. The game renders offscreen at that size and the window shows it scaled to fit the
-screen, so a small window still gets a sharp picture (3D edges and the TrueType text; the game's own textures are 256 x
+behind the others). The game is held to 60 frames a second: the swap waits for as many of the display's refreshes (vsync)
+as come nearest a 60th of a second, so a 120 Hz or 144 Hz screen waits for 2 and the animations run at the speed they
+were made for. The window takes the screen's own shape, 4:3, 16:10 or 16:9, so no bars show on any of them (16:10 at
+3840 x 2400 on a MacBook, 16:9 at 3840 x 2160); --aspect still forces one. The game renders offscreen at that size and
+the window shows it scaled to fit the screen, so a small window still gets a sharp picture (3D edges and the TrueType text; the game's own textures are 256 x
 256 at most and do not gain detail). The game's bitmap fonts have one size for every resolution from 1024 x 768 up, so
 the panels' small print is smaller on the screen at the larger sizes (at 3840 x 2160 about 0.7 times its size at 2730 x
 1536); --resolution 2048x1536 keeps the size the original gives at its largest preset. The park and the lobby are drawn
 out to the new edges with the same vertical field of view, so the sides show more of the park and nothing is cut off;
 the panels on the park view are anchored to the edges of the screen (the money and the control panel left, the advisor
 right, dialogs in the middle); the 4:3 art (the logo, the loading screens, the films and the full-screen pictures) keeps
-its shape in the middle of the screen with black bars at the sides. The window fits the screen at that aspect, so a
-16:9 screen shows no bars round the game. A machine whose framebuffers or textures are smaller than the size asked for
+its shape in the middle of the screen with black bars at the sides. The window fits the screen at that aspect, so any
+4:3, 16:10 or 16:9 screen shows no bars round the game. A machine whose framebuffers or textures are smaller than the size asked for
 gets the largest preset that fits, and the log says so once (TPW_LARGEST_GAME_SIZE=3000 in the environment tries that
 on a machine that has room).
 
@@ -190,12 +202,15 @@ on a machine that has room).
                                           2048x1536, which keep their height when widened: 2730 x 1536 at 16:9; or
                                           the port's 2560x1920, 3200x2400 and 4096x3072, which keep the width of their
                                           16:9 size: 2560 x 1440, 3200 x 1800, 3840 x 2160)
-    tpw_launcher --aspect 16:10           another shape (anything from 4:3 wider: 3840 x 2400 at the default size)
+    tpw_launcher --aspect 16:10           another shape (anything from 4:3 wider: 3840 x 2400 at the default size);
+                                          without it the screen's own shape is used
     tpw_launcher --aspect 4:3             the original layout, exactly as the Mac draws it (4096 x 3072 by default)
 
 devtools/run_launcher.sh passes --aspect 4:3 and --resolution 2048x1536 unless its options name them, because the
 scripted clicks of the test recipes are 4:3 game pixels at 2048 x 1536; a widescreen test run passes --aspect 16:9 and
 moves its clicks on right-anchored and centred panels (the script's header has the widescreen recipes for the easy park).
+The recipes' pass numbers are timed without the 60 frames a second pacing, so the script sets TPW_VSYNC_EVERY_REFRESH=1
+(a test-only variable that swaps at every refresh as before the pacing); --paced leaves it unset to test the pacing itself.
 
 ## Contributing
 

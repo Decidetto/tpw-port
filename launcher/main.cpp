@@ -15,6 +15,7 @@
 #include <string>
 #include <unordered_map>
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include <dlfcn.h>
@@ -58,7 +59,9 @@ namespace {
 // The largest preset, 4096 x 3072 (3840 x 2160 at 16:9), rendered offscreen and scaled to the window (the maintainer,
 // 2026-10-20; it was Resolution.sam's 2048 x 1536 preset, 7, from 2026-10-11). Presets 8 to 10 are the port's own.
 constexpr int32_t kDefaultResolution = 10;
-// The screen's shape: 16:9 unless --aspect asks otherwise (the maintainer, 2026-10-20). Presets 1 to 7 keep their
+// The screen's shape: the nearest of 4:3, 16:10 and 16:9 to the screen's own unless --aspect asks otherwise
+// (ScreenAspect, from tpw-port PR #9 by samueleagle91), and 16:9 when the screen cannot be asked (the maintainer chose
+// 16:9, 2026-10-20; a fixed shape left bars on other screens). Presets 1 to 7 keep their
 // height and take the width the shape gives them, so 2048 x 1536 becomes 2730 x 1536; presets 8 to 10 keep the width of
 // their 16:9 size (2560, 3200, 3840) and take the height. 4:3 is the original game's layout exactly.
 constexpr int kDefaultAspectWide = 16;
@@ -95,6 +98,31 @@ int ResolutionPreset(const char* size) {
         if (std::strcmp(size, sizes[i]) == 0) return i + 1;
     return 0;
 }
+
+#ifdef TPW_PORT_FIX
+// The shape of the screen the game opens on (its desktop mode: --display's screen, else the main one), as the nearest of
+// the three the UI was laid out for: 4:3, 16:10 and 16:9 (a MacBook's 2056 x 1329 is 16:10, a 21:9 screen 16:9, a 5:4
+// or upright one 4:3). False when there is no screen to ask. Video is started for it and stays started (the window and
+// the game use it).
+bool ScreenAspect(int& wide, int& high) {
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) return false;
+    SDL_DisplayID display = tpw::ChosenDisplay();
+    if (display == 0) display = SDL_GetPrimaryDisplay();
+    const SDL_DisplayMode* mode = display != 0 ? SDL_GetDesktopDisplayMode(display) : nullptr;
+    if (mode == nullptr || mode->w <= 0 || mode->h <= 0) return false;
+    static const int kShapes[3][2] = {{4, 3}, {16, 10}, {16, 9}};
+    const float shape = static_cast<float>(mode->w) / static_cast<float>(mode->h);
+    int nearest = 0;
+    for (int i = 1; i < 3; ++i) {
+        const float distance = std::fabs(shape - static_cast<float>(kShapes[i][0]) / static_cast<float>(kShapes[i][1]));
+        const float best = std::fabs(shape - static_cast<float>(kShapes[nearest][0]) / static_cast<float>(kShapes[nearest][1]));
+        if (distance < best) nearest = i;
+    }
+    wide = kShapes[nearest][0];
+    high = kShapes[nearest][1];
+    return true;
+}
+#endif
 
 // W:H with both whole and positive, no narrower than 4:3; 0 for anything else.
 float ParseAspect(const char* text) {
@@ -247,7 +275,8 @@ void Usage(const char* program) {
                  "                    640x480, 800x600, 1024x768, 1280x1024, 1600x1200, 2048x1536) or a larger one of the\n"
                  "                    port's (2560x1920, 3200x2400, 4096x3072; default: 4096x3072). The game renders at it\n"
                  "                    offscreen and the window shows it scaled\n"
-                 "  --aspect W:H   the screen's shape (default 16:9). The Resolution.sam presets keep their height and are\n"
+                 "  --aspect W:H   the screen's shape (default: the nearest of 4:3, 16:10 and 16:9 to the screen's own).\n"
+                 "                 The Resolution.sam presets keep their height and are\n"
                  "                 widened (2048x1536 becomes 2730x1536 at 16:9, 2458x1536 at 16:10); the larger ones keep\n"
                  "                 the width of their 16:9 size (2560x1440, 3200x1800, 3840x2160 at 16:9; 3840x2400 at\n"
                  "                 16:10). The park is seen further to the sides, the panels keep to the screen's edges\n"
@@ -525,9 +554,10 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     // The launcher's settings are written to launcher.ini again here, after the importer's last write of the file (the
     // choice it saved on Play), which kept the importer's older copy of the keys. "Skip the intro films" is as
     // --no-movies; "Back to the launcher after playing" opens the launcher again when a game started from its window
-    // quits (ReopenLauncher). From tpw-port PRs #10, #22 and #23 by samueleagle91.
+    // quits (ReopenLauncher). From tpw-port PRs #10, #20, #22, #23 and #24 by samueleagle91.
     for (const char* key : {tpw::ui::kSkipIntroKey, tpw::ui::kBackToLauncherKey, tpw::ui::kVisitorArrivalsKey,
-                            tpw::ui::kVisitorLimitKey}) {
+                            tpw::ui::kVisitorLimitKey, tpw::ui::kSmoothZoomKey,
+                            tpw::ui::kInterfaceSizeKey}) {
         const std::string value = backend.Setting(key);
         std::string ignored;
         if (!value.empty()) tpw::ui::ImporterBackend::SaveIniExtra(prefPath, key, value, ignored);
@@ -542,6 +572,14 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
         if (gPortArrivalScale != 1.0f || gPortVisitorLimit != 1500)
             tpw::Log("park rules: visitors arriving x%.1f, visitor limit %d", static_cast<double>(gPortArrivalScale),
                      static_cast<int>(gPortVisitorLimit));
+    }
+    // The Settings box's "Smooth wheel zoom" (Will_HandleCameraMessages); off, the original's step, by default.
+    gUISmoothWheelZoom = backend.Setting(tpw::ui::kSmoothZoomKey) == "1" ? 1 : 0;
+    if (gUISmoothWheelZoom != 0) tpw::Log("smooth wheel zoom (the launcher's Settings)");
+    {   // the Settings box's interface size (UI_SetRealScreenRez)
+        const std::string size = backend.Setting(tpw::ui::kInterfaceSizeKey);
+        gUIScale = size == "85" ? 0.85f : size == "70" ? 0.7f : 1.0f;
+        if (gUIScale != 1.0f) tpw::Log("interface size: %s%%", size.c_str());
     }
 #endif
     if (choice.skipIntro) {
@@ -644,6 +682,7 @@ int LauncherMain(int argc, char** argv) {
     int32_t resolution = kDefaultResolution;
     int aspectWide = kDefaultAspectWide;
     int aspectHigh = kDefaultAspectHigh;
+    bool aspectGiven = false;   // --aspect; without it the screen's own shape (ScreenAspect)
     if (const char* dir = std::getenv("TPW_GAME_DIR")) config.gameDir = dir;
     std::filesystem::path program;   // the application the data tables are read from (platform/game_tables.cpp)
     std::string dataDir, play;       // --data, --play: the launcher's data folder (no --game)
@@ -706,6 +745,7 @@ int LauncherMain(int argc, char** argv) {
                 tpw::LogRawF("launcher: --aspect wants W:H, no narrower than 4:3 (16:9, 16:10, 4:3): %s\n", shape);
                 return 2;
             }
+            aspectGiven = true;
         }
         else if (arg == "--no-intro") config.debugOptions[3] = 0;
         else if (arg == "--frames") config.maxFrames = std::atoi(value());
@@ -840,6 +880,10 @@ int LauncherMain(int argc, char** argv) {
 
     // 4:3 leaves the game's own sizes alone (the 1280 x 1024 preset stays 5:4); anything wider widens the screen.
 #ifdef TPW_PORT_FIX
+    if (!aspectGiven && !ScreenAspect(aspectWide, aspectHigh)) {
+        aspectWide = kDefaultAspectWide;
+        aspectHigh = kDefaultAspectHigh;
+    }
     gUIWideAspect = aspectWide * 3 == aspectHigh * 4 ? 0.0f : static_cast<float>(aspectWide) / static_cast<float>(aspectHigh);
     tpw::Log("aspect: %d:%d%s", aspectWide, aspectHigh, gUIWideAspect == 0.0f ? " (the original 4:3 layout)" : "");
     gUIHighPresets = 1;
@@ -855,6 +899,9 @@ int LauncherMain(int argc, char** argv) {
     gPortScriptCode = true;
     // The ride context read as the tag_sMesh it is (rsse.h; samueleagle91, tpw-port PR #25).
     gPortRideCtx = true;
+    // The 2D map's pointer, zoom and view in the unit space and at the interface size (UI_Base.h; samueleagle91, tpw-port
+    // PR #24).
+    gPortWideMap = true;
     // The preset is the size the game renders at, not the window's; a machine whose framebuffers are smaller gets the
     // largest preset that fits. TPW_LARGEST_GAME_SIZE stands in for the machine's limit, to check the fallback.
     if (resolution > 0) {
