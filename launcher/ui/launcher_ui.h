@@ -93,6 +93,11 @@ public:
     Rect TileRect(int index) const { return tilesShown_ ? tileRects_[index] : Rect{}; }
     // The all-confirmed home's Play button of a tile (0 US, 1 European) in the last frame, in points (empty when not shown).
     Rect ReadyPlayRect(int index) const { return readyShown_ ? readyPlay_[index] : Rect{}; }
+    // The Settings box's Interface size switch, its last row, where the last frame drew it (scrolled with the box), in
+    // points (empty when the box is closed).
+    Rect InterfaceSizeRect() const { return settingsOpen_ ? interfaceSizeRect_ : Rect{}; }
+    // Whether the last frame scrolled the Settings box, with its clip and its bar (false when the box is closed).
+    bool SettingsScrolls() const { return settingsOpen_ && settingsScrolls_; }
     // Where the last frame drew the launcher's version ("v" and the version, the footer's bottom right corner), in
     // points; empty when not shown.
     Rect VersionRect() const { return versionRect_; }
@@ -192,6 +197,8 @@ private:
     int verifyIndex_ = -1;
     int armedRemove_ = -1;
     std::string settingsMessage_;
+    Rect interfaceSizeRect_;   // last frame's (InterfaceSizeRect)
+    bool settingsScrolls_ = false;   // last frame's (SettingsScrolls)
 
     std::string notice_;
     bool noticeProblem_ = false;
