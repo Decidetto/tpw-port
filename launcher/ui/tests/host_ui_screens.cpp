@@ -1059,6 +1059,9 @@ void CheckSettingsScroll(SDL_Renderer* renderer) {
         Check(tall.Bottom() < height - metric::kMargin && ui.InterfaceSizeRect().y == tall.y,
               "settings: in a tall window the box fits and the wheel moves nothing");
         Check(!ui.SettingsScrolls(), "settings: in a tall window the box does not scroll, so no bar is drawn");
+    }
+}
+
 bool Overlaps(const Rect& a, const Rect& b) {
     return a.w > 0 && b.w > 0 && a.x < b.Right() && b.x < a.Right() && a.y < b.Bottom() && b.y < a.Bottom();
 }
