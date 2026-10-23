@@ -61,6 +61,10 @@ env:
 
 jobs:
   play-windows:
+    env:
+      # The 2D launcher's SDL GPU renderer fails inside the hosted VM's Mesa stack (TGSI SAMPLE).
+      # Software SDL rendering is for this test desktop only; the game's OpenGL still uses llvmpipe.
+      SDL_RENDER_DRIVER: software
     strategy:
       fail-fast: false   # one image failing must not hide the other's result
       matrix:
