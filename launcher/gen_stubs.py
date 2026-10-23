@@ -129,7 +129,9 @@ def main():
     needed = sorted(undefined - defined)
     system = SystemLibraries(args.syslib)
     names = [c_name(s) for s in needed]
-    demangled = run([args.cxxfilt], "\n".join(names) + "\n").splitlines()
+    # c_name already removes Mach-O's extra underscore. Older Apple c++filt versions strip one by default on
+    # stdin; that would turn _Z... into Z... and classify every C++ function as a variable on a clean Mac.
+    demangled = run([args.cxxfilt, "--no-strip-underscore"], "\n".join(names) + "\n").splitlines()
 
     functions, variables, special = [], [], []
     for symbol, name, pretty in zip(needed, names, demangled):
