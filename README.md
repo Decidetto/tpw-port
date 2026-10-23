@@ -252,6 +252,10 @@ The test for where a change goes: does a park play the same with it on and with 
 tpw-port. If it changes the rules, the money, the visitors, the staff, the rides, the advisor, the game's content, what a
 control does or the save files, it belongs in tpw-mods, even as a setting that is off by default.
 
+One exception: an option the original game already had in its .sam data files belongs in tpw-port, even when it
+changes how a park plays, as long as it offers only the values the original accepts and its default is the original's.
+Players set it in the launcher or a game menu, never by editing a .sam file.
+
 Pull requests are welcome here for anything that passes that test: fixes, other systems (Linux, for example), build
 changes, tools. [CONTRIBUTING.md](CONTRIBUTING.md) has the rules, including the three a setting must meet. An accepted
 pull request is merged here and also made in the private working tree both tpw-decomp and tpw-port are exported from,
