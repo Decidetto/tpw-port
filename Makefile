@@ -1,4 +1,4 @@
-# Builds the launcher on an Apple Silicon Mac. `make` builds build/tpw_launcher; `make run` starts it; `make test`
+# Builds the launcher on an Apple Silicon or Intel Mac. `make` builds build/tpw_launcher; `make run` starts it; `make test`
 # builds everything and runs the tests.
 #
 # The CMake release fetched when this Mac has no CMake 3.20 or newer (the macOS universal tarball, its SHA-256):
@@ -49,14 +49,12 @@ all: launcher
 
 # Each step needs the one before it, so the order holds under make -j too.
 check-mac:
-	@if [ "`uname -s`" != Darwin ] || [ "`uname -m`" != arm64 ]; then \
-	  echo "This build is for Apple Silicon Macs only."; \
-	  if [ "`sysctl -n sysctl.proc_translated 2>/dev/null`" = 1 ]; then \
-	    echo "This Terminal runs under Rosetta. Turn off \"Open using Rosetta\" in Terminal's Get Info window and try again."; \
-	  fi; \
+	@if [ "`uname -s`" != Darwin ]; then \
+	  echo "This build is for macOS. On Windows, use build.cmd."; \
 	  exit 1; \
 	fi
-	@echo "==> Apple Silicon Mac, macOS `sw_vers -productVersion`"
+	@case "`uname -m`" in arm64|x86_64) ;; *) echo "This build needs an Apple Silicon or Intel Mac."; exit 1 ;; esac
+	@echo "==> macOS `sw_vers -productVersion`, `uname -m`"
 
 check-tools: check-mac
 	@if ! xcode-select -p >/dev/null 2>&1; then \
