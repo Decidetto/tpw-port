@@ -42,6 +42,8 @@ struct WindowPlacement {
     void (*log)(const char* line) = nullptr;
     // Called once when this window starts SDL's video itself (the log file's display line); null: nothing.
     void (*videoStarted)() = nullptr;
+    // Called once the window is on screen (macOS: the application menu is named after the launcher from then on).
+    void (*windowShown)() = nullptr;
     // The folder of the log files, which the About box's Show logs opens (empty: no such button).
     std::string logsFolder;
 };

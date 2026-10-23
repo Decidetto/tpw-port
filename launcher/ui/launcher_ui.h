@@ -98,11 +98,16 @@ public:
     Rect TileRect(int index) const { return tilesShown_ ? tileRects_[index] : Rect{}; }
     // The all-confirmed home's Play button of a tile (0 US, 1 European) in the last frame, in points (empty when not shown).
     Rect ReadyPlayRect(int index) const { return readyShown_ ? readyPlay_[index] : Rect{}; }
-    // Where the last frame drew the launcher's version ("v0.0.2", the footer's bottom right corner), in points; empty
-    // when not shown.
+    // Where the last frame drew the launcher's version ("v" and the version, the footer's bottom right corner), in
+    // points; empty when not shown.
     Rect VersionRect() const { return versionRect_; }
     // The About box's Show logs button in the last frame, in points (empty when not shown).
     Rect ShowLogsRect() const { return showLogsRect_; }
+    // The title row in the last frame, in points: the product's name, the version label drawn to its right, and the
+    // header's buttons (About, Settings, Park rules and the header's Play when shown; empty on screens without them).
+    Rect TitleRect() const { return titleRect_; }
+    Rect TitleVersionRect() const { return titleVersionRect_; }
+    Rect HeaderButtonsRect() const { return headerButtonsRect_; }
 
 private:
     struct DialogInbox;
@@ -162,6 +167,9 @@ private:
     bool readyShown_ = false;
     Rect versionRect_;         // last frame's version text (VersionRect)
     Rect showLogsRect_;        // last frame's Show logs button
+    Rect titleRect_;           // last frame's title, its version label and the header's buttons
+    Rect titleVersionRect_;
+    Rect headerButtonsRect_;
     std::string logsFolder_;
 
     // The editions' states, refreshed every frame.

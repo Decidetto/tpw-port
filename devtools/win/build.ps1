@@ -42,7 +42,7 @@ $ClangMin = [version]'23.1.3'   # the clang of llvm-mingw 20261006
 # Exit codes (the CI and scripts rely on them):
 #   0 done; 2 unknown argument; 10 not 64-bit Windows, or no curl.exe/tar.exe to fetch with; 20 a download failed;
 #   21 a download did not match its checksum; 22 a download could not be unpacked; 30 configuring failed;
-#   40 building failed; 50 a test failed; 60 the build folder could not be removed.
+#   40 building failed; 45 a program needs a non-system DLL; 50 a test failed; 60 the build folder could not be removed.
 
 $Root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $Action = 'build'
@@ -285,6 +285,34 @@ function Step([string]$name, [int]$failCode, [string]$exe, [string[]]$argv) {
 
 function Slash([string]$path) { return $path.Replace('\', '/') }
 
+# A standalone exe must run without the build tools on PATH. The port links its runtimes statically; check the
+# actual PE imports as well, so a toolchain change cannot silently add libc++.dll or another redistributable.
+function Test-Imports([string]$program) {
+    $objdump = Join-Path $ClangBin 'llvm-objdump.exe'
+    if (-not (Test-Path -LiteralPath $objdump)) {
+        Fail 45 @("The compiler has no llvm-objdump.exe beside it: $ClangBin", 'Run build.cmd TOOLS=fetch to use the checked toolchain.')
+    }
+    $output = & $objdump -p $program 2>&1
+    if ($LASTEXITCODE -ne 0) { Fail 45 @("Could not inspect the DLL imports of $program.", ($output | Out-String)) }
+    $dlls = @($output | ForEach-Object { if ("$_" -match 'DLL Name:\s*(\S+)') { $Matches[1].ToLowerInvariant() } } | Sort-Object -Unique)
+    if ($dlls.Count -eq 0) { Fail 45 @("No DLL import table found in $program.") }
+    $system = @('advapi32.dll', 'avrt.dll', 'bcrypt.dll', 'cfgmgr32.dll', 'comctl32.dll', 'comdlg32.dll',
+        'crypt32.dll', 'd3d11.dll', 'd3d12.dll', 'dinput8.dll', 'dwmapi.dll', 'dwrite.dll', 'dxgi.dll',
+        'gdi32.dll', 'glu32.dll', 'hid.dll', 'imm32.dll', 'kernel32.dll', 'msvcrt.dll', 'ntdll.dll',
+        'ole32.dll', 'oleaut32.dll', 'opengl32.dll', 'powrprof.dll', 'psapi.dll', 'rpcrt4.dll',
+        'secur32.dll', 'setupapi.dll', 'shcore.dll', 'shell32.dll', 'shlwapi.dll', 'ucrtbase.dll',
+        'user32.dll', 'userenv.dll', 'usp10.dll', 'version.dll', 'winmm.dll', 'winspool.drv',
+        'wintrust.dll', 'ws2_32.dll', 'wtsapi32.dll', 'xinput1_4.dll')
+    $record = @("$program imports:") + @($dlls | ForEach-Object { "  $_" })
+    $record | ForEach-Object { Write-Host $_ }
+    Add-Content -LiteralPath (Join-Path $Logs 'imports.log') -Value $record
+    $extra = @($dlls | Where-Object { $_ -notin $system -and $_ -notmatch '^(api|ext)-ms-win-[a-z0-9-]+\.dll$' })
+    if ($extra.Count) {
+        Fail 45 @("$program needs DLLs that are not part of Windows: $($extra -join ', ').",
+                  'The build must link these libraries statically. Report build\logs\imports.log; do not download DLLs from other sites.')
+    }
+}
+
 Set-Location -LiteralPath $Root
 if ((Test-Path -LiteralPath (Join-Path $Build 'CMakeCache.txt')) -and (Test-Path -LiteralPath (Join-Path $Build 'build.ninja'))) {
     Say "Build folder $Build is configured"
@@ -298,10 +326,17 @@ if ((Test-Path -LiteralPath (Join-Path $Build 'CMakeCache.txt')) -and (Test-Path
 Say 'Building the launcher'
 Step 'build' 40 $CMake @('--build', (Slash $Build), '--target', 'tpw_launcher')
 $Exe = Join-Path $Build 'tpw_launcher.exe'
+Test-Imports $Exe
 
 if ($Action -eq 'test') {
     Say 'Building the tests'
     Step 'build-tests' 40 $CMake @('--build', (Slash $Build))
+    # CTest's command list covers tests in subdirectories too; tools fetched under build\tools are never inspected.
+    $testList = & $CTest --test-dir $Build --show-only=json-v1 | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) { Fail 50 @('Could not read the CTest program list.') }
+    foreach ($program in @($testList.tests | ForEach-Object { $_.command[0] } | Sort-Object -Unique)) {
+        if ($program -and $program -like '*.exe') { Test-Imports $program }
+    }
     Say 'Running the tests'
     Step 'test' 50 $CTest @('--test-dir', (Slash $Build), '--output-on-failure')
 }

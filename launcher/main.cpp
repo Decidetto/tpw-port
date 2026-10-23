@@ -340,7 +340,7 @@ int EarlyOptions(int argc, char** argv, std::string& dataDir) {
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--version") {
-            std::printf("%s %s\nbuild: %s\n", tpw::ui::kProductName, tpw::ui::kLauncherVersion, TPW_LAUNCHER_BUILD);
+            std::printf("%s\nbuild: %s\n", tpw::ui::kProductNameWithVersion, TPW_LAUNCHER_BUILD);
             return 0;
         }
         if (arg == "--help" || arg == "-h") {
@@ -359,8 +359,7 @@ int EarlyOptions(int argc, char** argv, std::string& dataDir) {
 // (SDL's pref path, as ChooseFromDataFolder finds it); when that cannot be made, in the temporary folder. stderr's first
 // line names it.
 void OpenLog(int argc, char** argv, const std::string& dataDir) {
-    const std::string firstLine = std::string(tpw::ui::kProductName) + " " + tpw::ui::kLauncherVersion + " (build: " +
-                                  TPW_LAUNCHER_BUILD + ")";
+    const std::string firstLine = std::string(tpw::ui::kProductNameWithVersion) + " (build: " + TPW_LAUNCHER_BUILD + ")";
     std::filesystem::path folder;
     std::string why;
     if (!dataDir.empty()) {
@@ -418,7 +417,8 @@ void AdoptOldSaves(const std::filesystem::path& prefPath, const std::filesystem:
 }
 
 // The application menu's title (the bold name beside the Apple menu): "Theme Park World" for the European edition, "Sim
-// Theme Park" for the US one, so the menu bar names the game being played rather than the launcher (the maintainer, 2026-10-22).
+// Theme Park" for the US one, so the menu bar names the game being played rather than the launcher (the maintainer, 2026-10-22);
+// while the launcher's own window is up, the launcher's name with its version (kProductNameWithVersion, the maintainer, 2026-10-23).
 // Set through the Objective-C runtime (as platform/window.cpp sends orderBack:) on the menu SDL made when its video
 // started: [[[[NSApp mainMenu] itemAtIndex:0] submenu] setTitle:]. Nothing is created here: without a running
 // NSApplication (the --play path, whose video starts later in the game's own window code) the title is left alone and
@@ -535,6 +535,8 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
         // The window's report lines and its screens go to the log file too; its About box shows the logs folder.
         placement.log = [](const char* line) { tpw::LogRaw(line); };
         placement.videoStarted = [] { tpw::LogDisplayOnce(); };
+        // While the launcher window is up the menu bar names it with its version; Play renames it after the game below.
+        placement.windowShown = [] { NameAppMenu(tpw::ui::kProductNameWithVersion); };
         if (!tpw::LogFilePath().empty()) placement.logsFolder = std::filesystem::path(tpw::LogFilePath()).parent_path().string();
         if (!config.display.empty()) {
             if (config.background) {   // before SDL's video starts, as the game's window sets them

@@ -944,6 +944,40 @@ void CheckVersionAndLogs(SDL_Renderer* renderer) {
     Check(ui.ShowLogsRect().w == 0, "About closed: no Show logs");
 }
 
+// The launcher's version beside the large title on both homes, at the smallest window, the start size and two large
+// ones: drawn to the title's right with a small gap, much smaller than the title, on its line, and clear of the header's
+// buttons. And the application's name as the window title and the menu bar give it: the product's name, " v", the
+// version from launcher/VERSION.txt.
+void CheckTitleVersion(SDL_Renderer* renderer) {
+    CheckEq(std::string(kProductNameWithVersion), std::string(kProductName) + " v" + kLauncherVersion,
+            "the application's name carries the version");
+    CheckEq(std::string(kVersionLabel), std::string("v") + kLauncherVersion, "the version label");
+    Check(std::string(kLauncherVersion) != "unknown", "the version comes from launcher/VERSION.txt");
+    const float sizes[4][2] = {{metric::kMinWidth, metric::kMinHeight}, {metric::kStartWidth, metric::kStartHeight},
+                               {1600, 1000}, {2560, 1440}};
+    for (bool ready : {false, true}) {
+        for (const auto& size : sizes) {
+            const float w = size[0], h = size[1];
+            const std::string what = std::string(ready ? "all-confirmed home" : "home") + " at " +
+                                     std::to_string(static_cast<int>(w)) + "x" + std::to_string(static_cast<int>(h));
+            FakeBackend b;
+            if (ready) FillEverything(b);
+            LauncherUi ui(renderer, b);
+            ui.Frame(kDt, w, h, 1);
+            const Rect t = ui.TitleRect(), v = ui.TitleVersionRect(), buttons = ui.HeaderButtonsRect();
+            Check(t.w > 0 && v.w > 0 && v.h > 0, what + ": the title and its version are drawn");
+            Check(v.x >= t.Right() + 6 && v.x <= t.Right() + 16, what + ": the version is just right of the title");
+            Check(v.h < t.h * 0.7f, what + ": the version is much smaller than the title");
+            Check(v.y >= t.y && v.Bottom() <= t.Bottom(), what + ": the version is on the title's line");
+            Check(buttons.w > 0, what + ": the header's buttons are drawn");
+            Check(v.Right() + 10 <= buttons.x, what + ": the version is clear of the header's buttons");
+            Check(buttons.Right() <= w, what + ": the header's buttons fit the window");
+            std::printf("  %s: title %.0f..%.0f, version %.0f..%.0f (y %.0f..%.0f), buttons %.0f..%.0f\n", what.c_str(),
+                        t.x, t.Right(), v.x, v.Right(), v.y, v.Bottom(), buttons.x, buttons.Right());
+        }
+    }
+}
+
 // The real backend over an empty data folder: the European edition counts the US Mac program as one more required
 // file from the US Mac CD until a file of the program's size is in place (the program's content is not needed here: the
 // importer, too, counts a file of an accepted size as present). The folder is made under the screens folder and
@@ -1012,6 +1046,7 @@ int main(int argc, char** argv) {
         CheckDrops(renderer);
         CheckReady(renderer);
         CheckVersionAndLogs(renderer);
+        CheckTitleVersion(renderer);
         SDL_DestroyRenderer(renderer);
     }
     SDL_DestroySurface(scratch);

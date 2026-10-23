@@ -319,6 +319,40 @@ if(TPW_BUILD_LAUNCHER AND OpenGL_FOUND AND Python3_FOUND)
   endif()
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/launcher/VERSION.txt)
   target_compile_definitions(tpw_launcher_ui PUBLIC TPW_LAUNCHER_VERSION="${TPW_LAUNCHER_VERSION}")
+  # The product's name as the system shows it, read from launcher/ui/theme.h (TPW_UI_PRODUCT_NAME), its one place, for the
+  # Windows version resource and the macOS Info.plist below.
+  file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/launcher/ui/theme.h tpw_name_line REGEX "^#define TPW_UI_PRODUCT_NAME \"" LIMIT_COUNT 1)
+  if(NOT tpw_name_line MATCHES "^#define TPW_UI_PRODUCT_NAME \"([^\"]+)\"")
+    message(FATAL_ERROR "launcher/ui/theme.h: no #define TPW_UI_PRODUCT_NAME \"...\" line")
+  endif()
+  set(TPW_BUNDLE_NAME "${CMAKE_MATCH_1}")
+  set(TPW_BUNDLE_EXECUTABLE tpw_launcher)
+  string(REPLACE "." "," TPW_LAUNCHER_VERSION_COMMAS "${TPW_LAUNCHER_VERSION}")
+  if(WIN32)
+    # The executable's version resource (launcher/win/launcher.rc.in): FileVersion, ProductVersion, ProductName and a
+    # FileDescription of the name with its version, which Explorer's Details and the Task Manager show. Compiled by the
+    # toolchain's resource compiler (llvm-mingw's windres); without one the build goes on without the resource.
+    include(CheckLanguage)
+    check_language(RC)
+    if(CMAKE_RC_COMPILER)
+      enable_language(RC)
+      configure_file(launcher/win/launcher.rc.in ${CMAKE_CURRENT_BINARY_DIR}/launcher.rc @ONLY)
+      target_sources(tpw_launcher PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/launcher.rc)
+    else()
+      message(STATUS "tpw: no resource compiler, tpw_launcher.exe has no version resource")
+    endif()
+  endif()
+  if(APPLE)
+    # A macOS .app bundle (tpw_launcher.app) with launcher/macos/Info.plist.in, so the Dock, Cmd-Tab and the application
+    # menu read the launcher's name. Off by default: the scripts, the README and CI run the bare tpw_launcher.
+    option(TPW_BUNDLE "Build the macOS launcher as an .app bundle (launcher/macos/Info.plist.in)" OFF)
+    set(TPW_BUNDLE_IDENTIFIER "org.tpw-port.launcher" CACHE STRING "The .app bundle's CFBundleIdentifier (TPW_BUNDLE)")
+    if(TPW_BUNDLE)
+      configure_file(launcher/macos/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist @ONLY)
+      set_target_properties(tpw_launcher PROPERTIES MACOSX_BUNDLE ON
+                            MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist)
+    endif()
+  endif()
   # The About box's versions (launcher/ui/versions.cpp) come from the libraries' own headers: libjpeg's and FFmpeg's
   # (headers only; the game's platform layer links them), and the stb headers' first lines, which carry their versions.
   target_include_directories(tpw_launcher_ui PRIVATE $<TARGET_PROPERTY:tpw_libjpeg,INTERFACE_INCLUDE_DIRECTORIES>)

@@ -19,6 +19,9 @@ namespace {
 constexpr float kBuntingBottom = 24;   // the bunting hangs above this line
 constexpr float kTitleTop = 26;
 constexpr float kContentTop = 80;      // the screens start below the title
+// The version label beside the title: a much smaller face than the title's, kTitleVersionGap points to its right.
+constexpr Style kTitleVersionStyle = style::kBodyBold;
+constexpr float kTitleVersionGap = 10;
 constexpr float kTileHeight = 158;
 constexpr size_t kLogLimit = 4000;     // rows kept in the checking log
 constexpr float kNoticeSeconds = 4.5f;
@@ -450,8 +453,20 @@ void LauncherUi::DrawBackdrop(const Rect& w) {
     }
 }
 
+// The title row: the product's name large, and the launcher's version just to its right in a much smaller face, on the
+// same baseline, in the title's sticker look (white with a dark outline) so it reads on the sky. The header's buttons
+// keep to the right of it (TitleRect, TitleVersionRect and HeaderButtonsRect are the test's view of the row).
 float LauncherUi::DrawHeader(const Rect& w, bool buttons) {
-    text_.DrawOutlined(style::kTitle, metric::kMargin + 2, kTitleTop, kProductName, colour::kPaper, colour::kInk, 3);
+    const float titleX = metric::kMargin + 2;
+    const float titleW = text_.Width(style::kTitle, kProductName);
+    text_.DrawOutlined(style::kTitle, titleX, kTitleTop, kProductName, colour::kPaper, colour::kInk, 3);
+    titleRect_ = {titleX, kTitleTop, titleW, text_.LineHeight(style::kTitle)};
+    const float versionW = text_.Width(kTitleVersionStyle, kVersionLabel);
+    const float versionY = kTitleTop + text_.Ascent(style::kTitle) - text_.Ascent(kTitleVersionStyle);
+    titleVersionRect_ = {titleRect_.Right() + kTitleVersionGap, versionY, versionW, text_.LineHeight(kTitleVersionStyle)};
+    text_.DrawOutlined(kTitleVersionStyle, titleVersionRect_.x, titleVersionRect_.y, kVersionLabel, colour::kPaper,
+                       colour::kInk, 2);
+    headerButtonsRect_ = Rect{};
     if (buttons) {
         float h = 36, y = kTitleTop + 8;
         float x = w.Right() - metric::kMargin;
@@ -467,13 +482,14 @@ float LauncherUi::DrawHeader(const Rect& w, bool buttons) {
         float rw = ui_.ButtonWidth("Park rules");
         x -= rw + 10;
         if (ui_.Button("park-rules", {x, y, rw, h}, "Park rules", ButtonKind::Quiet)) rulesOpen_ = true;
-        // The header's Play only where it clears the title (the tiles have their own Play buttons).
+        // The header's Play only where it clears the title and its version (the tiles have their own Play buttons).
         float pw = ui_.ButtonWidth("Play") + 20;
-        bool fits = x - pw - 10 > metric::kMargin + 2 + text_.Width(style::kTitle, kProductName) + 16;
+        bool fits = x - pw - 10 > titleVersionRect_.Right() + 16;
         if (screen_ == Screen::Home && AnyPlayable() && fits) {
             x -= pw + 10;
             if (ui_.Button("header-play", {x, y, pw, h}, "Play", ButtonKind::Go)) OpenPlay();
         }
+        headerButtonsRect_ = {x, y, w.Right() - metric::kMargin - x, h};
     }
     return kContentTop;
 }
@@ -495,7 +511,7 @@ void LauncherUi::DrawTiles(const Rect& row, bool dropTargets) {
 // the tiles and their Play buttons above. A player reads it from there for a bug report.
 Rect LauncherUi::DrawFooter(const Rect& w) {
     const float m = metric::kMargin;
-    const std::string version = std::string("v") + kLauncherVersion;
+    const std::string version = kVersionLabel;
     const float vw = text_.Width(style::kSmall, version);
     float footerW = w.w - 2 * m - 24;
     std::vector<std::string> disclaimer = text_.Wrap(style::kSmall, kDisclaimer, footerW - vw - 16);
@@ -1044,7 +1060,7 @@ void LauncherUi::DrawAbout(const Rect& w) {
     Rect in = panel.Inset(20);
     float y = in.y;
     // The version in the title, as --version and the log file's first line give it.
-    std::string title = std::string("About ") + kProductName + " v" + kLauncherVersion;
+    std::string title = std::string("About ") + kProductNameWithVersion;
     text_.Draw(style::kHeadline, in.x, y, title, colour::kInk);
     float cw = ui_.ButtonWidth("Close");
     if (ui_.Button("about-close", {in.Right() - cw, y, cw, 36}, "Close", ButtonKind::Quiet)) aboutOpen_ = false;
@@ -1102,7 +1118,7 @@ void LauncherUi::Frame(float dt, float width, float height, float scale) {
     ui_.SetInteractive(!overlay && !dragging_);
     tilesShown_ = false;
     readyShown_ = false;
-    versionRect_ = showLogsRect_ = Rect{};
+    versionRect_ = showLogsRect_ = titleRect_ = titleVersionRect_ = headerButtonsRect_ = Rect{};
     DrawBackdrop(window);
     switch (screen_) {
         case Screen::Home: DrawHome(window); break;
