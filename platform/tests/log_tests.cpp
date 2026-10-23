@@ -10,7 +10,9 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include "log_file.h"
 #include "platform.h"
@@ -50,12 +52,29 @@ void Touch(const fs::path& file) { std::ofstream(file) << "old run\n"; }
 }  // namespace
 
 int main() {
+#ifdef _WIN32
+    // Windows: no mkdtemp and no /tmp. A new folder in the user's temporary folder, named by the time and a number;
+    // create_directory is false when the name is taken, and the next number is tried.
+    std::error_code tempError;
+    const fs::path temp = fs::temp_directory_path(tempError);
+    fs::path made;
+    for (int n = 0; n < 100 && made.empty() && !tempError; ++n) {
+        const fs::path candidate =
+            temp / ("tpw-log-tests-" + std::to_string(static_cast<long long>(std::time(nullptr))) + "-" + std::to_string(n));
+        if (fs::create_directory(candidate, tempError)) made = candidate;
+    }
+    if (made.empty()) {
+        std::fprintf(stderr, "no temporary folder: %s\n", tempError ? tempError.message().c_str() : "every name was taken");
+        return 1;
+    }
+#else
     char pattern[] = "/tmp/tpw-log-tests-XXXXXX";
     const char* made = mkdtemp(pattern);
     if (made == nullptr) {
         std::perror("mkdtemp");
         return 1;
     }
+#endif
     const fs::path root = made;
     const fs::path folder = root / "logs";   // OpenLogFile makes it
 

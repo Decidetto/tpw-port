@@ -14,8 +14,23 @@
 #include <vector>
 
 #include <fcntl.h>
+#ifdef _WIN32
+// Windows: no <sys/utsname.h> or sysconf; the system and the hardware come from the Win32 calls (OsLine, HardwareLine),
+// and the file from the C runtime's _wopen, _write and _close (<io.h>). Only this file includes <windows.h>: none of the
+// game's headers come in here.
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <io.h>
+#include <sys/stat.h>
+#else
 #include <sys/utsname.h>
 #include <unistd.h>
+#endif
 #if defined(__APPLE__)
 #include <sys/sysctl.h>
 #endif
@@ -68,6 +83,17 @@ std::string IsoLocalTime(std::time_t when) {
     localtime_r(&when, &local);
     char stamp[32];
     std::strftime(stamp, sizeof stamp, "%Y-%m-%dT%H:%M:%S", &local);
+#ifdef _WIN32
+    // Windows: struct tm has no tm_gmtoff or tm_zone. The offset is the local time read as UTC (_mkgmtime, which
+    // changes its argument, so a copy) less the time itself. The zone's name is left out: Windows gives its long name in
+    // the system's language and code page ("Atlantic Daylight Time"), not an abbreviation.
+    std::tm asUtc = local;
+    const long offset = static_cast<long>(_mkgmtime(&asUtc) - when);
+    const long minutes = (offset < 0 ? -offset : offset) / 60;
+    char zone[64];
+    std::snprintf(zone, sizeof zone, "%c%02ld:%02ld", offset < 0 ? '-' : '+', minutes / 60, minutes % 60);
+    return std::string(stamp) + zone;
+#else
     const long offset = local.tm_gmtoff;
     const long minutes = (offset < 0 ? -offset : offset) / 60;
     char zone[64];
@@ -75,6 +101,7 @@ std::string IsoLocalTime(std::time_t when) {
     std::string text = std::string(stamp) + zone;
     if (local.tm_zone != nullptr && local.tm_zone[0] != '\0') text += std::string(" (") + local.tm_zone + ")";
     return text;
+#endif
 }
 
 // The command line, each argument quoted when it has a space or is empty.
@@ -101,6 +128,20 @@ std::string OsLine() {
 #if defined(__APPLE__)
     return "os: macOS " + Or(SysctlText("kern.osproductversion"), "(version unknown)") + " (" +
            Or(SysctlText("kern.osversion"), "build unknown") + ")\n";
+#elif defined(_WIN32)
+    // Windows: no uname. RtlGetVersion (ntdll.dll, in every process, so it is looked up and not linked) answers the real
+    // version; GetVersionExW answers 6.2 to a program without a compatibility manifest. Windows 11 is 10.0, build 22000
+    // and later.
+    using RtlGetVersionCall = LONG(WINAPI*)(OSVERSIONINFOW*);
+    const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    const auto rtlGetVersion =
+        ntdll != nullptr ? reinterpret_cast<RtlGetVersionCall>(reinterpret_cast<void*>(GetProcAddress(ntdll, "RtlGetVersion")))
+                         : nullptr;
+    OSVERSIONINFOW version{};
+    version.dwOSVersionInfoSize = sizeof version;
+    if (rtlGetVersion == nullptr || rtlGetVersion(&version) != 0) return "os: Windows (version unknown)\n";
+    return "os: Windows " + std::to_string(version.dwMajorVersion) + "." + std::to_string(version.dwMinorVersion) +
+           " (build " + std::to_string(version.dwBuildNumber) + ")\n";
 #else
     utsname name{};
     std::string kernel = uname(&name) == 0 ? std::string(name.sysname) + " " + name.release : "unknown";
@@ -109,6 +150,26 @@ std::string OsLine() {
 }
 
 std::string HardwareLine() {
+#ifdef _WIN32
+    // Windows: no uname or sysconf. The machine is the processor's own (GetNativeSystemInfo), the cores the logical
+    // processors of the launcher's processor group (GetSystemInfo: at most 64), the memory the physical memory
+    // (GlobalMemoryStatusEx). The model and the processor's name are not looked for.
+    SYSTEM_INFO native{};
+    GetNativeSystemInfo(&native);
+    const std::string model = "unknown model";
+    const char* machine = native.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64   ? "x64"
+                          : native.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64 ? "arm64"
+                          : native.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL ? "x86"
+                                                                                          : "";
+    const std::string arch = Or(machine, "unknown arch");
+    const std::string cpu = "unknown cpu";
+    SYSTEM_INFO info{};
+    GetSystemInfo(&info);
+    const int64_t cores = static_cast<int64_t>(info.dwNumberOfProcessors);
+    MEMORYSTATUSEX status{};
+    status.dwLength = sizeof status;
+    const int64_t memory = GlobalMemoryStatusEx(&status) ? static_cast<int64_t>(status.ullTotalPhys) : 0;
+#else
     utsname name{};
     const std::string unameMachine = uname(&name) == 0 ? name.machine : "";
 #if defined(__APPLE__)
@@ -128,6 +189,7 @@ std::string HardwareLine() {
     const int64_t pages = sysconf(_SC_PHYS_PAGES), pageSize = sysconf(_SC_PAGESIZE);
     const int64_t memory = pages > 0 && pageSize > 0 ? pages * pageSize : 0;
 #endif
+#endif
     return "hardware: " + model + ", " + arch + ", " + cpu + ", " + (cores > 0 ? std::to_string(cores) : "?") +
            " cores, " + (memory > 0 ? Gigabytes(static_cast<uint64_t>(memory)) : "? GB") + " RAM\n";
 }
@@ -139,8 +201,13 @@ bool IsLogName(const std::string& name) {
 
 void WriteAll(int fd, const char* data, size_t length) {
     while (length > 0) {
+#ifdef _WIN32
+        // Windows: _write takes and answers an int count (the header is a few hundred bytes) and has no EINTR.
+        const int wrote = _write(fd, data, static_cast<unsigned>(length));
+#else
         const ssize_t wrote = write(fd, data, length);
         if (wrote < 0 && errno == EINTR) continue;
+#endif
         if (wrote <= 0) return;
         data += wrote;
         length -= static_cast<size_t>(wrote);
@@ -194,7 +261,15 @@ bool OpenLogFile(const std::filesystem::path& folder, const std::string& firstLi
     std::filesystem::path path;
     for (int n = 1; n < 100 && fd < 0; ++n) {
         path = folder / (n == 1 ? name : stem + "-" + std::to_string(n) + ".log");
+#ifdef _WIN32
+        // Windows: the path's c_str() is UTF-16, so _wopen. _O_NOINHERIT is O_CLOEXEC's counterpart. _O_BINARY keeps
+        // every line ending in \n alone, as on the Mac: text mode would write \r\n, and the file would differ by
+        // system (Notepad and the other editors read \n). Read and write for the user is all a mode means there.
+        fd = _wopen(path.c_str(), _O_WRONLY | _O_CREAT | _O_EXCL | _O_APPEND | _O_NOINHERIT | _O_BINARY,
+                    _S_IREAD | _S_IWRITE);
+#else
         fd = open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_APPEND | O_CLOEXEC, 0644);
+#endif
         if (fd < 0 && errno != EEXIST) break;
     }
     if (fd < 0) {
@@ -214,7 +289,11 @@ const std::string& LogFilePath() { return gPath; }
 
 void CloseLogFile() {
     const int fd = gLogFileFd.exchange(-1);
+#ifdef _WIN32
+    if (fd >= 0) _close(fd);   // Windows: the C runtime's name
+#else
     if (fd >= 0) close(fd);
+#endif
     gPath.clear();
 }
 
