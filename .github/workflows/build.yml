@@ -6,7 +6,11 @@
 # Windows 10 era's server release) and windows-2025 (build 26100, the same build as Windows 11 24H2; windows-latest).
 name: build
 
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches-ignore: [ci-play]   # the temporary play workflow builds these sources itself
+  pull_request:
+  workflow_dispatch:
 
 # A newer push to the same branch (or pull request) cancels the run still going for it.
 concurrency:

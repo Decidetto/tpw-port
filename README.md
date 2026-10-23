@@ -22,15 +22,21 @@ folder. Nothing else is installed.
 
 ### Windows
 
-On a PC with 64-bit Windows 10 or 11, in PowerShell or a Command Prompt:
+On a PC with 64-bit Windows 10 (version 1803 or newer) or Windows 11, install Git once if you do not have it:
 
     winget install Git.Git
+
+After installing Git, open a new PowerShell or Command Prompt window. Paste these lines:
+
     git -c core.autocrlf=false clone --recurse-submodules https://github.com/ThemeParkWorldDecomp/tpw-port.git
     cd tpw-port
     .\build.cmd
+    .\run.cmd
 
-Then `.\run.cmd` starts the launcher (or double-click build\tpw_launcher.exe). If you have Git already, skip the first
-line; if winget has just installed it, open a new window first so that git is on the PATH.
+The first build downloads its tools and compiles the launcher. No Visual Studio, CMake, Python or SDK installation is
+needed. Next time, open the tpw-port folder and double-click run.cmd, or run `.\run.cmd` there. You can also start
+build\tpw_launcher.exe directly. To update an existing clone, run `git pull`, `git submodule update --init --recursive`
+and `.\build.cmd`.
 
 Git for Windows is the only thing installed. build.cmd fetches the rest into build\tools\, in the versions the Windows
 build was tested with, each checked against its publisher's SHA-256: llvm-mingw (the compiler), CMake, Ninja and Python
@@ -103,7 +109,10 @@ run with -ExecutionPolicy Bypass), which fetches those versions of the first fou
 pins each with its SHA-256. It takes a tool from the PATH instead when the version there is usable: a MinGW clang for
 x86-64 not older than 23.1.3, CMake 3.20 or newer, Ninja 1.10 or newer, Python 3.10 or newer. It prints which it chose.
 `.\build.cmd TOOLS=fetch` fetches all four whatever the PATH has, `.\build.cmd test` builds everything and runs the
-tests, `BUILD=<folder>` builds in another folder, and each step's output is kept in build\logs\. What it does differently is all in the platform layer and the build: the signs' text
+tests, `BUILD=<folder>` builds in another folder, and each step's output is kept in build\logs\. Every build checks the
+launcher's DLL imports, and test builds check the test programs too: only Windows system libraries are allowed. The
+record is build\logs\imports.log. CI also copies the launcher away from its build tools and starts it with only
+Windows system folders on PATH. What it does differently is all in the platform layer and the build: the signs' text
 is drawn with stb_truetype (platform/gdi_text_win.cpp) from the game's fonts and the Windows fonts folder; the POSIX
 calls MinGW lacks are in platform/win and platform/posix_win.cpp; a division the x86 traps (by zero, INT_MIN / -1) gets
 the answer the Mac's processor gives (platform/host_win.cpp); and the build makes its own copy of the one tpw-decomp file
