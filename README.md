@@ -257,7 +257,8 @@ changes, tools. [CONTRIBUTING.md](CONTRIBUTING.md) has the rules, including the 
 pull request is merged here and also made in the private working tree both tpw-decomp and tpw-port are exported from,
 so every later export keeps it.
 
-Contributors: samueleagle91 (spamaerie on Discord) made the Windows build (pull request #1).
+Contributors: samueleagle91 (spamaerie on Discord) made the Windows build (pull request #1). slappyhead (on Discord)
+was the first to get the port running on an Intel Mac, which showed what the Intel build was missing.
 
 Every push and pull request is built and tested by GitHub Actions (.github/workflows/build.yml): on Windows Server 2022
 and 2025 (the nearest GitHub has to the Windows 10 and 11 kernels; 2025 is the build of Windows 11 24H2), on Windows 11
