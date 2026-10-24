@@ -33,6 +33,7 @@
 #include "TPMain.h"
 #include "tpw_probe.h"
 #include "ResolutionBalance.h"
+#include "OptionsBalance.h"
 #include "AudioPlaceHolder.h"
 #include "UI_Base.h"
 #include "lobby.h"
@@ -567,6 +568,11 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
         std::string ignored;
         if (!value.empty()) tpw::ui::ImporterBackend::SaveIniExtra(prefPath, key, value, ignored);
     }
+    for (const tpw::ui::SamOption& option : tpw::ui::SamOptions()) {   // the Graphics section's keys, as above
+        const std::string value = backend.Setting(option.key);
+        std::string ignored;
+        if (!value.empty()) tpw::ui::ImporterBackend::SaveIniExtra(prefPath, option.key, value, ignored);
+    }
     gBackToLauncher = choice.backToLauncher;
     // The Park rules box (tpw-port PR #23: more visitors per bus, a higher visitor limit) left the port, which changes
     // only how the game is shown and driven, never how a park plays; it is to become a tpw-mods mod. A launcher.ini that
@@ -589,6 +595,18 @@ int ChooseFromDataFolder(tpw::Config& config, std::filesystem::path& program, co
     // The Settings box's "Varied sounds" (SoundRandom, include/AudioPlaceHolder.h): on unless launcher.ini says 0.
     gPortPcSoundPicks = backend.Setting(tpw::ui::kPcSoundPicksKey) != "0";
     tpw::Log("sound picks: %s (the launcher's Settings)", gPortPcSoundPicks ? "varied, as on the PC" : "the Mac's");
+    // The Settings box's Graphics section: the original's options files' values the player chose (EngineStartup_OptionsFile).
+    for (const tpw::ui::SamOption& option : tpw::ui::SamOptions()) {
+        const std::string value = backend.Setting(option.key);
+        const int choice = tpw::ui::SamChoice(option, value);
+        if (choice >= 0) {
+            gPortSamOptions[option.slot] = option.values[static_cast<size_t>(choice)];
+            tpw::Log("graphics: %s %s (the launcher's Settings)", option.title, option.shown[static_cast<size_t>(choice)].c_str());
+        } else if (!value.empty() && value != "default") {
+            tpw::Log("graphics: launcher.ini's %s=%s is not one of its choices; the detail level's own is kept", option.key,
+                     value.c_str());
+        }
+    }
 #endif
     if (choice.skipIntro) {
         config.movies = false;
