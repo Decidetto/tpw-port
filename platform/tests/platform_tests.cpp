@@ -528,8 +528,10 @@ static void TestFileHandles() {
                config.userDir / "save" / "users" / "T5L48" / "outbox" / "00000001.jpg"));
     CHECK(tpw::GamePathForReading("TPW:Theme Park Data:save:users:T5L48:outbox:00000002.jpg") ==
           "TPW:Theme Park Data:save:users:T5L48:outbox:00000002.jpg");
+#ifdef TPW_PORT_FIX
     // AddressBook::Save, Outbox::Save and Outbox::WriteMailData write through the SaveStream glue: its open of the colon path makes
-    // the file in the user folder, and the loaders' CreateFile (TextFile::Open) reads the same file back.
+    // the file in the user folder, and the loaders' CreateFile (TextFile::Open) reads the same file back (the port fix v5L48; the
+    // Mac's open takes the colon path as it is).
     {
         const char* const kBook = "TPW:Theme Park Data:save:users:T5L48:addrbook.dat";
         SaveStream out;
@@ -570,6 +572,7 @@ static void TestFileHandles() {
         CHECK(!fs::exists(config.userDir / "save" / "users" / "U5L48"));
         CHECK(!fs::exists(kMail));
     }
+#endif
 
     // Listing more than one entry, then files and folders coming and going.
     _WIN32_FIND_DATAA found;
@@ -1673,7 +1676,7 @@ static void TestFitArithmetic() {
 }
 
 #ifdef TPW_PORT_FIX
-// ---- Format 7, 24-bit RGB (overrides/platform/upixels.cpp, unit postcard24) -------------------------------------------
+// ---- Format 7, 24-bit RGB (platform/upixels.cpp, unit postcard24) -------------------------------------------
 // Postcard::save copies the card (format 9, bytes alpha, red, green, blue) into a format 7 buffer of its own and hands its
 // rows to the JPEG writer: the copy has a buffer, and its bytes are red, green, blue. Read back, the alpha is the default.
 static void TestUPixels24RGB() {

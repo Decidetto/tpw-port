@@ -160,7 +160,7 @@ public:
     }
 };
 
-// TPW_PORT_FIX postcard24 MakeImplementation/UPixels24RGB | Mac: format 7 is three bytes red, green, blue, read with the default alpha unless it is the transparent colour, written in the same order (GetPixel 0x1000d25c, SetPixel 0x1000d2a8 in the 2.0.1 CD's sams utils shared, where format 8's are 0x1000d114 and 0x1000d160) | Port: the same | Why: the translation had no format 7, so the 24-bit copy Postcard::save makes of the card had no buffer and the JPEG writer read its rows at address 0: sending a postcard crashed
+// TPW_PORT_FIX postcard24 MakeImplementation/UPixels24RGB | Mac: format 7 is three bytes red, green, blue, read with the default alpha unless it is the transparent colour, written in the same order (GetPixel 0x1000d25c, SetPixel 0x1000d2a8 in the 2.0.1 CD's sams utils shared, where format 8's are 0x1000d114 and 0x1000d160) | Port: the same | Why: the translation had no format 7, so the 24-bit copy Postcard::save makes of the card had no buffer and the JPEG writer read its rows at address 0: sending a postcard crashed; contributed by samueleagle91 (tpw-port PR #49)
 // Format 7: three bytes red, green, blue; the alpha is the default, or zero for the
 // transparent colour when one is set.
 class UPixels24RGB : public UPixelsImplementation {
@@ -278,12 +278,12 @@ UPixelsImplementation* MakeImplementation(intptr_t format, uint8_t* bytes, uint3
     case kPixels8Indexed: return new UPixels8Indexed(bytes, w, h, pitch, reinterpret_cast<const uint8_t*>(palette));
     case kPixels16RGBA: return new UPixels16RGBA(bytes, w, h, pitch, 2);
     case kPixels16BGRA: return new UPixels16BGRA(bytes, w, h, pitch, 2);
-    case kPixels24RGB: return new UPixels24RGB(bytes, w, h, pitch, 3);   // TPW_PORT_FIX postcard24 (above)
     case kPixels24BGR: return new UPixels24BGR(bytes, w, h, pitch, 3);
     case kPixels32ARGB: return new UPixels32ARGB(bytes, w, h, pitch, 4);
     case kPixels32RGBA: return new UPixels32RGBA(bytes, w, h, pitch, 4);
     case kPixels32BGRA: return new UPixels32BGRA(bytes, w, h, pitch, 4);
-    default: return nullptr;   // above 11: none in the original either; 0, 2, 3, 6: not translated yet
+    case kPixels24RGB: return new UPixels24RGB(bytes, w, h, pitch, 3);   // TPW_PORT_FIX postcard24 (above)
+    default: return nullptr;   // above 11: none in the original either; 0, 2, 3, 6, 7: not translated yet
     }
 }
 }  // namespace
